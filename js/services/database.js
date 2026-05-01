@@ -97,6 +97,9 @@ export const getProfessionals = async (filter = 'all') => {
                 });
             });
 
+            // FILTRO DE SEGURIDAD: Solo aprobados (Recuperado del plan)
+            professionals = professionals.filter(p => p.validationStatus === 'aprobada');
+
             // Filtro flexible del lado del cliente (case-insensitive, partial match)
             if (filter !== 'all') {
                 const filterLower = filter.toLowerCase();
@@ -130,9 +133,13 @@ export const getProfessionals = async (filter = 'all') => {
  * Escucha en tiempo real a todos los profesionales que están ONLINE.
  */
 export const listenForAllOnlineProfessionals = (callback) => {
-    console.log("📡 [Firebase] Escuchando todos los profesionales ONLINE...");
+    console.log("📡 [Firebase] Escuchando todos los profesionales ONLINE (Y VALIDADOS)...");
     const profRef = collection(db, "professionals");
-    const q = query(profRef, where("isOnline", "==", true));
+    const q = query(
+        profRef, 
+        where("isOnline", "==", true),
+        where("validationStatus", "==", "aprobada")
+    );
 
     return onSnapshot(q, (snapshot) => {
         const professionals = [];
@@ -668,3 +675,200 @@ export const getReviews = async (profId) => {
 
 // Re-exportar datos mock
 export const MOCK_DB = MOCK_PROFESSIONALS;
+
+// ============================================================
+// FUNCIONES PARA EL PANEL DE ADMINISTRADOR
+// ============================================================
+
+/**
+ * Escucha contratos en curso - prueba ambas colecciones y todos los estados posibles
+ */
+export const listenForOngoingContracts = (callback) => {
+    let results = [];
+    const activeStatuses = ["accepted", "in_progress", "ongoing", "active", "aceptado", "aprobado", "en_progreso", "approved"];
+    
+    // Intentar con colección serviceRequests (camelCase)
+    const tryCollection = (colName) => {
+        try {
+            const q = query(collection(db, colName));
+            return onSnapshot(q, (snap) => {
+                const filtered = snap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .filter(r => {
+                        const s = (r.status || '').toLowerCase();
+                        return s !== 'pending' && s !== 'finished' && s !== 'cancelled' && s !== 'rejected' && s !== 'completed' && s !== 'pagado' && s !== '';
+                    });
+                callback(filtered);
+            }, (err) => { console.warn(colName + ' error:', err); callback([]); });
+        } catch(e) { return null; }
+    };
+    
+    // Probar serviceRequests primero, luego service_requests
+    const unsub = tryCollection('serviceRequests') || tryCollection('service_requests');
+    return unsub || (() => {});
+};
+
+/**
+ * Escucha historial de trabajos finalizados - prueba ambas colecciones
+ */
+export const listenForFinishedHistory = (callback) => {
+    const tryCollection = (colName) => {
+        try {
+            const q = query(collection(db, colName), where("status", "in", ["finished", "completed", "finalizado", "pagado"]));
+            return onSnapshot(q, (snap) => {
+                callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            }, (err) => { console.warn(colName + ' finished error:', err); callback([]); });
+        } catch(e) { return null; }
+    };
+    return tryCollection('serviceRequests') || tryCollection('service_requests') || (() => {});
+};
+
+/**
+ * Obtiene solicitudes de retiro pendientes
+ */
+export const getPendingWithdrawals = async () => {
+    try {
+        const q = query(collection(db, "withdrawals"), where("status", "==", "pending"));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (err) {
+        console.error("getPendingWithdrawals error:", err);
+        return [];
+    }
+};
+
+/**
+ * Obtiene todas las empresas para el panel admin
+ * En Firestore las empresas pueden ser userType='client', 'empresa', 'company' o 'Empresa'
+ */
+export const getCompaniesForAdmin = async () => {
+    try {
+        const snap = await getDocs(collection(db, "users"));
+        const companies = [];
+        snap.forEach(d => {
+            const data = d.data();
+            const type = (data.userType || data.role || '').toLowerCase();
+            // Incluir: client, empresa, company, Empresa, y excluir: professional, admin
+            const isNotProfOrAdmin = type !== 'professional' && type !== 'admin';
+            const isCompanyLike = type === 'client' || type.includes('empr') || type.includes('comp');
+            if (isCompanyLike && isNotProfOrAdmin) {
+                companies.push({ id: d.id, ...data });
+            }
+        });
+        console.log('[Admin] Empresas encontradas:', companies.length, companies.map(c => c.userType || c.role));
+        return companies;
+    } catch (err) {
+        console.error("getCompaniesForAdmin error:", err);
+        return [];
+    }
+};
+
+/**
+ * Actualiza el estado de una empresa
+ */
+export const updateCompanyStatus = async (companyId, status) => {
+    try {
+        await updateDoc(doc(db, "users", companyId), {
+            validationStatus: status,
+            updatedAt: serverTimestamp()
+        });
+        return { success: true };
+    } catch (err) {
+        console.error("updateCompanyStatus error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Marca un retiro como pagado
+ */
+export const markWithdrawalAsPaid = async (withdrawalId) => {
+    try {
+        await updateDoc(doc(db, "withdrawals", withdrawalId), {
+            status: "paid",
+            paidAt: serverTimestamp()
+        });
+        return { success: true };
+    } catch (err) {
+        console.error("markWithdrawalAsPaid error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Elimina un registro de retiro
+ */
+export const deleteWithdrawalRecord = async (withdrawalId) => {
+    try {
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js");
+        await deleteDoc(doc(db, "withdrawals", withdrawalId));
+        return { success: true };
+    } catch (err) {
+        console.error("deleteWithdrawalRecord error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Escucha historial de retiros
+ */
+export const listenForWithdrawalHistory = (callback) => {
+    try {
+        const q = query(collection(db, "withdrawals"), where("status", "==", "paid"));
+        return onSnapshot(q, (snap) => {
+            callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (err) => { console.error("listenForWithdrawalHistory error:", err); callback([]); });
+    } catch (err) {
+        console.error("listenForWithdrawalHistory setup error:", err);
+        callback([]);
+        return () => {};
+    }
+};
+
+/**
+ * Sube un voucher de pago para un profesional
+ */
+export const uploadProfessionalVoucher = async (requestId, file) => {
+    try {
+        const storageRef = ref(storage, `vouchers/professional/${requestId}_${Date.now()}`);
+        const snap = await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(snap.ref);
+        await updateDoc(doc(db, "service_requests", requestId), {
+            professionalVoucherUrl: url,
+            professionalPaidAt: serverTimestamp()
+        });
+        return { success: true, url };
+    } catch (err) {
+        console.error("uploadProfessionalVoucher error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Elimina un profesional de la base de datos
+ */
+export const deleteProfessional = async (profId) => {
+    try {
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js");
+        await deleteDoc(doc(db, "professionals", profId));
+        await deleteDoc(doc(db, "users", profId));
+        return { success: true };
+    } catch (err) {
+        console.error("deleteProfessional error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Elimina una solicitud de servicio
+ */
+export const deleteServiceRequest = async (requestId) => {
+    try {
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js");
+        await deleteDoc(doc(db, "service_requests", requestId));
+        return { success: true };
+    } catch (err) {
+        console.error("deleteServiceRequest error:", err);
+        return { success: false, error: err.message };
+    }
+};

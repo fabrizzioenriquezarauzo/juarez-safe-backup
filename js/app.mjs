@@ -7,8 +7,7 @@ import { renderDashboard } from './views/DashboardView.js';
 import { renderProfile } from './views/ProfileView.js';
 import { renderCheckout } from './views/CheckoutView.js';
 import { renderSeed, loadSeed } from './views/SeedView.js';
-import { renderAdminDashboard } from './views/AdminDashboardView.js?v=MAY5';
-import { AdminController } from './AdminController.js?v=MAY5';
+import { renderAdminDashboard } from './views/AdminDashboardView.js';
 import {
     getProfessionals,
     updateProfessionalProfile,
@@ -33,16 +32,7 @@ import {
     getProfessionalsForAdmin,
     updateProfessionalStatus,
     addReview,
-    getReviews,
-    listenForOngoingContracts,
-    listenForFinishedHistory,
-    getPendingWithdrawals,
-    getCompaniesForAdmin,
-    updateCompanyStatus,
-    markWithdrawalAsPaid,
-    deleteWithdrawalRecord,
-    listenForWithdrawalHistory,
-    uploadProfessionalVoucher
+    getReviews
 } from './services/database.js';
 import { loginUser, registerUser, logoutUser, onAuthChange } from './services/auth.js';
 export { logoutUser }; // Permite que las vistas lo importen desde aquí sin circulares
@@ -61,7 +51,7 @@ const App = {
             Router.addRoute('/profile', this.loadProfile.bind(this));
             Router.addRoute('/checkout', this.loadCheckout.bind(this));
             Router.addRoute('/seed', this.loadSeedPage.bind(this));
-            Router.addRoute('/admin', AdminController.loadAdminDashboard.bind(AdminController));
+            Router.addRoute('/admin', this.loadAdminDashboard.bind(this));
             Router.init();
 
             // Escuchar cambios de sesión
@@ -589,23 +579,16 @@ const App = {
                 e.currentTarget.classList.add('active');
                 selectedType = e.currentTarget.dataset.type;
 
+                // Mostrar/Ocultar sección de documentos (para profesionales)
                 const docsSection = document.getElementById('professional-extra-fields');
+                if (docsSection) {
+                    docsSection.style.display = selectedType === 'professional' ? 'block' : 'none';
+                }
+
+                // Mostrar/Ocultar sección de empresa (RUC/Razón Social)
                 const companyFields = document.getElementById('company-extra-fields');
-                
-                if (selectedType === 'professional') {
-                    if (docsSection) docsSection.style.display = 'block';
-                    if (companyFields) companyFields.style.display = 'none';
-                    document.getElementById('file-dni').required = true;
-                    document.getElementById('file-certiadulto').required = true;
-                } else {
-                    if (docsSection) docsSection.style.display = 'none';
-                    if (companyFields) companyFields.style.display = 'block';
-                    document.getElementById('file-dni').required = false;
-                    document.getElementById('file-certiadulto').required = false;
-                    const cv = document.getElementById('file-cv');
-                    const cert = document.getElementById('file-certificados');
-                    if (cv) cv.required = false;
-                    if (cert) cert.required = false;
+                if (companyFields) {
+                    companyFields.style.display = selectedType === 'client' ? 'block' : 'none';
                 }
             });
         });
@@ -967,24 +950,12 @@ const App = {
             }
 
             AppState.serviceListenerUnsubscribe = listenForServiceRequests(AppState.user.uid, (requests) => {
-                const pendingRequests = requests.filter(r => r.status === 'pending');
-                const acceptedRequests = requests.filter(r => ['accepted','approved','payment_verifying'].includes(r.status));
-
-                // Render accepted missions in sidebar
-                this.renderAcceptedServices(acceptedRequests);
-
-                // Render ALL pending missions as cards in sidebar
-                this.renderPendingMissions(pendingRequests);
-
-                // Show modal notification only for first pending mission (if new)
-                if (pendingRequests.length > 0) {
-                    const firstPending = pendingRequests[0];
-                    const modal = document.getElementById('incoming-request-modal');
-                    if (modal && !modal.classList.contains('active')) {
-                        this.showIncomingRequest(firstPending);
-                    }
+                if (requests.length > 0 && requests[0].status === 'pending') {
+                    console.log("🔔 [Real-time] Nueva solicitud recibida:", requests[0]);
+                    this.showIncomingRequest(requests[0]);
                 }
             });
+            // Removed bindProfileEvents here, moved to loadProfile
         }
 
         // 4.5. Reupload Docs Listener
@@ -1301,7 +1272,6 @@ const App = {
         // B. Document Uploads (All 9 slots)
         const docIds = [
             { id: 'prof-doc-dni', type: 'dni' },
-            { id: 'prof-doc-certiadulto', type: 'certiadulto' },
             { id: 'prof-doc-cv', type: 'cv' },
             { id: 'prof-doc-certs', type: 'certs' },
             { id: 'prof-doc-recibo', type: 'recibo' },
@@ -1507,96 +1477,6 @@ const App = {
         });
     },
 
-    renderPendingMissions(pendingRequests) {
-        // Show all pending missions as cards in the sidebar with Accept/Reject buttons
-        let pendingContainer = document.getElementById('pending-missions-list');
-        if (!pendingContainer) {
-            // Create the container if it doesn't exist
-            const missionsSection = document.getElementById('missions-section');
-            if (!missionsSection) return;
-            const pendingSection = document.createElement('div');
-            pendingSection.id = 'pending-missions-section';
-            pendingSection.style.cssText = 'margin-bottom:16px;';
-            missionsSection.parentNode.insertBefore(pendingSection, missionsSection);
-            pendingSection.innerHTML = `
-                <h3 style="color:#0F172A;font-size:0.9rem;margin-bottom:12px;padding-left:2px;font-weight:800;display:flex;align-items:center;gap:8px;">
-                    <i class="fa-solid fa-bell" style="color:#F59E0B;"></i> Solicitudes Nuevas
-                    <span id="pending-missions-badge" style="background:#EF4444;color:#fff;font-size:0.65rem;padding:2px 7px;border-radius:100px;">0</span>
-                </h3>
-                <div id="pending-missions-list"></div>
-            `;
-            pendingContainer = document.getElementById('pending-missions-list');
-        }
-
-        const badge = document.getElementById('pending-missions-badge');
-        if (!pendingContainer) return;
-
-        if (!pendingRequests || pendingRequests.length === 0) {
-            if (badge) badge.style.display = 'none';
-            pendingContainer.innerHTML = '';
-            return;
-        }
-
-        if (badge) { badge.textContent = pendingRequests.length; badge.style.display = 'inline'; }
-
-        pendingContainer.innerHTML = pendingRequests.map(req => {
-            const earnings = req.profEarnings ? req.profEarnings.toFixed(2) : (Number(req.totalAmount || 0) * 0.85).toFixed(2);
-            return `
-            <div style="background:#FFFFFF;border:2px solid #F59E0B;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 4px 12px rgba(245,158,11,0.1);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <div>
-                        <strong style="font-size:0.9rem;color:#0F172A;">${req.clientName || '---'}</strong>
-                        <p style="margin:2px 0 0;font-size:0.75rem;color:#64748B;">${req.address || (req.days + ' días')}</p>
-                    </div>
-                    <span style="font-size:1rem;font-weight:800;color:#10B981;">S/ ${earnings}</span>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <button class="btn-reject-pending" data-id="${req.id}"
-                        style="background:transparent;color:#EF4444;border:1px solid rgba(239,68,68,0.3);padding:8px;border-radius:8px;cursor:pointer;font-weight:700;font-size:0.8rem;">
-                        ✕ Rechazar
-                    </button>
-                    <button class="btn-accept-pending" data-id="${req.id}" data-client="${req.clientName || ''}" data-phone="${req.clientPhone || ''}"
-                        style="background:#FF7A00;color:#fff;border:none;padding:8px;border-radius:8px;cursor:pointer;font-weight:700;font-size:0.8rem;">
-                        ✓ Aceptar
-                    </button>
-                </div>
-            </div>`;
-        }).join('');
-
-        // Bind events using data-attributes (no inline onclick needed)
-        pendingContainer.querySelectorAll('.btn-reject-pending').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const reqId = btn.dataset.id;
-                btn.disabled = true;
-                await updateServiceRequestStatus(reqId, 'rejected');
-                this.loadDashboard();
-            });
-        });
-        pendingContainer.querySelectorAll('.btn-accept-pending').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const reqId = btn.dataset.id;
-                const clientName = btn.dataset.client;
-                const clientPhone = btn.dataset.phone;
-                btn.disabled = true;
-                btn.textContent = 'Aceptando...';
-                const res = await updateServiceRequestStatus(reqId, 'accepted');
-                if (res.success) {
-                    const modal = document.getElementById('incoming-request-modal');
-                    if (modal) modal.classList.remove('active');
-                    const acceptedModal = document.getElementById('service-accepted-modal');
-                    if (acceptedModal) {
-                        const nameEl = document.getElementById('accepted-client-name');
-                        if (nameEl) nameEl.textContent = clientName;
-                        const waBtn = document.getElementById('btn-whatsapp-contact');
-                        if (waBtn && clientPhone) waBtn.href = `https://wa.me/51${clientPhone}`;
-                        acceptedModal.classList.add('active');
-                    }
-                    this.loadDashboard();
-                }
-            });
-        });
-    },
-
     showIncomingRequest(req) {
         const modal = document.getElementById('incoming-request-modal');
         if (!modal) return;
@@ -1617,39 +1497,18 @@ const App = {
 
         modal.classList.add('active');
 
-        // Define global handlers that the inline onclick calls
-        window.currentMissionReq = req;
-        window.acceptMission = async (reqId, clientName, clientPhone) => {
-            const targetId = reqId || (window.currentMissionReq && window.currentMissionReq.id);
-            const targetClient = clientName || (window.currentMissionReq && window.currentMissionReq.clientName) || '---';
-            const targetPhone = clientPhone || (window.currentMissionReq && window.currentMissionReq.clientPhone) || '';
-            if (!targetId) return;
-            const res = await updateServiceRequestStatus(targetId, 'accepted');
+        document.getElementById('btn-reject-req').onclick = async () => {
+            await updateServiceRequestStatus(req.id, 'rejected');
+            modal.classList.remove('active');
+        };
+
+        document.getElementById('btn-accept-req').onclick = async () => {
+            const res = await updateServiceRequestStatus(req.id, 'accepted');
             if (res.success) {
-                const modal = document.getElementById('incoming-request-modal');
-                if (modal) modal.classList.remove('active');
-                // Show success modal
-                const acceptedModal = document.getElementById('service-accepted-modal');
-                if (acceptedModal) {
-                    const nameEl = document.getElementById('accepted-client-name');
-                    if (nameEl) nameEl.textContent = targetClient;
-                    const waBtn = document.getElementById('btn-whatsapp-contact');
-                    if (waBtn && targetPhone) waBtn.href = `https://wa.me/51${targetPhone}`;
-                    acceptedModal.classList.add('active');
-                }
+                modal.classList.remove('active');
                 this.loadDashboard();
             }
         };
-        window.rejectMission = async (reqId) => {
-            const targetId = reqId || (window.currentMissionReq && window.currentMissionReq.id);
-            if (!targetId) return;
-            await updateServiceRequestStatus(targetId, 'rejected');
-            const modal = document.getElementById('incoming-request-modal');
-            if (modal) modal.classList.remove('active');
-            this.loadDashboard();
-        };
-
-        modal.classList.add('active');
     },
 
     renderAcceptedServices(services) {
@@ -1717,195 +1576,33 @@ const App = {
 
         document.getElementById('app').innerHTML = renderCheckout(AppState.selectedProfessional);
 
-        // ═══ LÓGICA DEL CALENDARIO MULTI-DÍA ═══
-        let currentMonth = new Date();
-        let selectedDates = []; // Formato: "YYYY-MM-DD"
-        let occupiedDates = []; // Fechas ya contratadas
-        
-        // Cargar fechas ocupadas desde Firebase
-        const fetchOccupiedDates = async () => {
-            try {
-                const q = query(
-                    collection(db, "requests"), 
-                    where("professionalId", "==", AppState.selectedProfessional.id),
-                    where("status", "==", "approved")
-                );
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (data.serviceDates) {
-                        occupiedDates.push(...data.serviceDates);
-                    } else if (data.serviceDate) {
-                        occupiedDates.push(data.serviceDate);
-                    }
-                });
-                renderCal(); // Re-renderizar cuando tengamos los datos
-            } catch (err) {
-                console.error("Error cargando fechas ocupadas:", err);
-            }
-        };
-
-        const renderCal = () => {
-            const grid = document.getElementById('cal-grid');
-            const label = document.getElementById('cal-month-label');
-            if (!grid || !label) return;
-
-            grid.innerHTML = '';
-            const year = currentMonth.getFullYear();
-            const month = currentMonth.getMonth();
-            const today = new Date();
-            today.setHours(0,0,0,0);
-            
-            label.textContent = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(currentMonth);
-
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-            let startingDay = firstDay === 0 ? 6 : firstDay - 1;
-
-            for (let i = 0; i < startingDay; i++) {
-                grid.innerHTML += '<div></div>';
-            }
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                const isSelected = selectedDates.includes(dateStr);
-                const isOccupied = occupiedDates.includes(dateStr);
-                const dateObj = new Date(year, month, d);
-                const isSunday = dateObj.getDay() === 0;
-                const isPast = dateObj < today;
-                
-                const dayEl = document.createElement('div');
-                
-                // Estilo base
-                let bgColor = '#fff';
-                let textColor = '#1E293B';
-                let borderColor = '#E2E8F0';
-                let cursor = 'pointer';
-                let pointerEvents = 'auto';
-                let opacity = '1';
-                let labelExtra = '';
-
-                if (isPast) {
-                    bgColor = '#F1F5F9';
-                    textColor = '#94A3B8';
-                    cursor = 'default';
-                    pointerEvents = 'none';
-                    opacity = '0.6';
-                } else if (isOccupied) {
-                    bgColor = '#F1F5F9';
-                    textColor = '#64748B';
-                    borderColor = '#CBD5E1';
-                    cursor = 'not-allowed';
-                    pointerEvents = 'none';
-                    labelExtra = '<span style="display:block; font-size:0.5rem; color:#EF4444; font-weight:800; margin-top:-2px;">OCUPADO</span>';
-                } else if (isSelected) {
-                    bgColor = '#FF7A00';
-                    textColor = 'white';
-                    borderColor = '#FF7A00';
-                } else if (isSunday) {
-                    bgColor = '#FEE2E2';
-                    textColor = '#EF4444';
-                    borderColor = '#FCA5A5';
-                }
-
-                dayEl.style.cssText = `
-                    text-align:center; padding:8px 0; font-size:0.85rem; font-weight:600; border-radius:8px; 
-                    cursor:${cursor}; transition:all 0.2s; background:${bgColor}; color:${textColor}; 
-                    border:1px solid ${borderColor}; pointer-events:${pointerEvents}; opacity:${opacity};
-                    display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:42px;
-                `;
-                
-                dayEl.innerHTML = `<span>${d}</span>${labelExtra}`;
-                
-                dayEl.onclick = () => {
-                    if (selectedDates.includes(dateStr)) {
-                        selectedDates = selectedDates.filter(date => date !== dateStr);
-                    } else {
-                        selectedDates.push(dateStr);
-                    }
-                    renderCal();
-                    updatePricing();
-                };
-                grid.appendChild(dayEl);
-            }
-        };
-
-        const updatePricing = () => {
-            const summaryList = document.getElementById('selected-days-list');
-            const summaryContainer = document.getElementById('selected-days-summary');
-            const subtotalEl = document.getElementById('calc-subtotal');
-            const totalEl = document.getElementById('total-price');
-            const daysLabel = document.getElementById('days-summary-label');
-            const sundayRow = document.getElementById('sunday-row');
-            const sundayCountEl = document.getElementById('sunday-count');
-            const sundayExtraEl = document.getElementById('sunday-extra');
-
-            if (!summaryList) return;
-
-            summaryList.innerHTML = '';
-            let subtotal = 0;
-            let sundayExtra = 0;
-            let sundayCount = 0;
-
-            selectedDates.sort().forEach(dateStr => {
-                const [y, m, d] = dateStr.split('-');
-                const dateObj = new Date(y, m - 1, d);
-                const isSunday = dateObj.getDay() === 0;
-                const dayRate = AppState.selectedProfessional.rate;
-
-                subtotal += dayRate;
-                if (isSunday) {
-                    sundayCount++;
-                    sundayExtra += dayRate; // Se paga el doble (uno base + uno extra)
-                }
-
-                const pill = document.createElement('span');
-                pill.style.cssText = 'background:rgba(255,122,0,0.1); color:#FF7A00; border:1px solid rgba(255,122,0,0.2); padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:700;';
-                pill.innerHTML = `<i class="fa-solid fa-calendar-check"></i> ${d}/${m}`;
-                summaryList.appendChild(pill);
-            });
-
-            summaryContainer.style.display = selectedDates.length > 0 ? 'block' : 'none';
-            daysLabel.innerHTML = `Días seleccionados: <strong>${selectedDates.length}</strong>`;
-            subtotalEl.textContent = `S/ ${subtotal.toFixed(2)}`;
-
-            if (sundayCount > 0) {
-                sundayRow.style.display = 'flex';
-                sundayCountEl.textContent = sundayCount;
-                sundayExtraEl.textContent = `+ S/ ${sundayExtra.toFixed(2)}`;
-            } else {
-                sundayRow.style.display = 'none';
-            }
-
-            const total = subtotal + sundayExtra;
-            totalEl.textContent = `S/ ${total.toFixed(2)}`;
-        };
-
-        // Eventos de navegación del calendario
-        document.getElementById('cal-prev').onclick = () => {
-            currentMonth.setMonth(currentMonth.getMonth() - 1);
-            renderCal();
-        };
-        document.getElementById('cal-next').onclick = () => {
-            currentMonth.setMonth(currentMonth.getMonth() + 1);
-            renderCal();
-        };
-
-        fetchOccupiedDates();
-        renderCal();
-
-        // Manejo del formulario
         const form = document.getElementById('checkout-form');
+        const daysInput = document.getElementById('days-input');
+        const totalPriceEl = document.getElementById('total-price');
+
+        if (daysInput && totalPriceEl) {
+            daysInput.addEventListener('input', (e) => {
+                const days = parseInt(e.target.value) || 1;
+                const rate = AppState.selectedProfessional.rate;
+                const subtotal = days * rate;
+                const commission = subtotal * 0.25;
+                const total = subtotal + commission;
+
+                const calcSub = document.getElementById('calc-subtotal');
+                const calcComm = document.getElementById('calc-commission');
+
+                if (calcSub) calcSub.textContent = `S/ ${subtotal.toFixed(2)}`;
+                if (calcComm) calcComm.textContent = `S/ ${commission.toFixed(2)}`;
+
+                totalPriceEl.textContent = `S/ ${total.toFixed(2)}`;
+            });
+        }
+
         if (form) {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
 
-                if (selectedDates.length === 0) {
-                    alert("Por favor, selecciona al menos un día en el calendario.");
-                    return;
-                }
-
+                // Asegurar que haya un usuario logueado en la vida real, pero manejamos gracefully
                 if (!AppState.user) {
                     alert("Debes iniciar sesión para solicitar un servicio.");
                     Router.navigateTo('/login');
@@ -1914,27 +1611,16 @@ const App = {
 
                 const btnSubmit = document.getElementById('btn-submit-request');
                 const oldContent = btnSubmit.innerHTML;
+
                 btnSubmit.disabled = true;
-                btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+                btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
 
                 try {
+                    const days = parseInt(document.getElementById('days-input').value) || 1;
                     const rate = AppState.selectedProfessional.rate;
-                    let sundayCount = 0;
-                    selectedDates.forEach(d => {
-                        const dateObj = new Date(d);
-                        if (dateObj.getDay() === 6) sundayCount++; // Date.getDay()=0 es domingo, pero en JS es 0-6. Ojo con el índice.
-                    });
-                    
-                    // Recalcular domingos correctamente
-                    let actualSundays = 0;
-                    selectedDates.forEach(ds => {
-                       const [y,m,d] = ds.split('-');
-                       if (new Date(y, m-1, d).getDay() === 0) actualSundays++;
-                    });
-
-                    const subtotal = selectedDates.length * rate;
-                    const sundayExtra = actualSundays * rate;
-                    const total = subtotal + sundayExtra;
+                    const subtotal = days * rate;
+                    const commission = subtotal * 0.25;
+                    const total = subtotal + commission;
 
                     const requestData = {
                         professionalId: AppState.selectedProfessional.id,
@@ -1943,77 +1629,24 @@ const App = {
                         clientName: document.getElementById('client-name').value,
                         clientEmail: document.getElementById('client-email').value,
                         clientPhone: document.getElementById('client-phone').value,
-                        serviceDates: selectedDates, // Array de fechas
+                        serviceDate: document.getElementById('service-date').value,
                         address: document.getElementById('project-address').value || '',
-                        days: selectedDates.length,
+                        days: days,
                         totalAmount: total,
-                        profEarnings: total * 0.85, // 85% para el trabajador
-                        adminCommission: total * 0.15, // 15% para la plataforma
+                        profEarnings: subtotal,
+                        adminCommission: commission,
                         status: 'pending'
                     };
 
                     const result = await createServiceRequest(requestData);
                     if (result.success) {
-                        // Crear el modal en document.body para que no sea destruido por el re-render del SPA
-                        const existingModal = document.getElementById('dynamic-success-modal');
-                        if (existingModal) existingModal.remove();
-
-                        const profName = AppState.selectedProfessional?.name || 'el especialista';
-                        const modalEl = document.createElement('div');
-                        modalEl.id = 'dynamic-success-modal';
-                        modalEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px;backdrop-filter:blur(4px);';
-                        modalEl.innerHTML = `
-                            <div style="background:#1E293B;border-radius:20px;padding:40px 32px;max-width:460px;width:100%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,0.6);max-height:90vh;overflow-y:auto;">
-                                <div style="width:70px;height:70px;border-radius:50%;background:rgba(16,185,129,0.15);border:2px solid rgba(16,185,129,0.4);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
-                                    <i class="fa-solid fa-check" style="font-size:2rem;color:#34D399;"></i>
-                                </div>
-                                <h2 style="font-size:1.6rem;color:#FFFFFF;margin:0 0 8px;">¡Solicitud Enviada!</h2>
-                                <p style="color:#94A3B8;margin-bottom:24px;font-size:0.9rem;line-height:1.6;">
-                                    Hemos notificado a <strong style="color:#FFFFFF;">${profName}</strong>. Ahora <strong style="color:#FF7A00;">realiza el pago</strong> para reservar el servicio:
-                                </p>
-
-                                <!-- INTERBANK -->
-                                <div style="background:#0F172A;border:2px solid #FF7A00;border-radius:14px;padding:20px;text-align:left;margin-bottom:12px;">
-                                    <p style="color:#94A3B8;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">🏦 BANCO</p>
-                                    <p style="color:#fff;font-weight:800;font-size:1rem;margin:0 0 14px;">INTERBANK</p>
-                                    <p style="color:#94A3B8;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">N° DE CUENTA</p>
-                                    <p style="color:#FF7A00;font-weight:800;font-size:1.2rem;letter-spacing:2px;margin:0 0 14px;">898 3136153503</p>
-                                    <p style="color:#94A3B8;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">CCI</p>
-                                    <p style="color:#fff;font-weight:700;font-size:0.9rem;letter-spacing:1px;margin:0;">0038 9801 3136 1535 0345</p>
-                                </div>
-
-                                <!-- YAPE -->
-                                <div style="background:#0F172A;border:2px solid #10B981;border-radius:14px;padding:16px;text-align:left;margin-bottom:12px;">
-                                    <p style="color:#94A3B8;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">📱 YAPE</p>
-                                    <p style="color:#10B981;font-weight:800;font-size:1.2rem;letter-spacing:2px;margin:0 0 4px;">915 079 361</p>
-                                    <p style="color:#64748B;font-size:0.78rem;margin:0;">Gerson Enriquez Arauzo</p>
-                                </div>
-
-                                <!-- DECLARACIÓN JURADA -->
-                                <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);border-radius:12px;padding:14px 16px;text-align:left;margin-bottom:20px;display:flex;align-items:flex-start;gap:10px;">
-                                    <i class="fa-solid fa-file-signature" style="color:#F59E0B;flex-shrink:0;margin-top:2px;font-size:1rem;"></i>
-                                    <p style="margin:0;color:#CBD5E1;font-size:0.82rem;line-height:1.55;"><strong style="color:#F59E0B;">Opción alternativa:</strong> Puedes adjuntar una <strong style="color:#F59E0B;">declaración jurada de pago</strong> al finalizar el servicio desde "Mis Solicitudes".</p>
-                                </div>
-
-                                <p style="color:#94A3B8;font-size:0.8rem;margin-bottom:24px;line-height:1.5;">
-                                    Después de transferir, sube tu <strong style="color:#10B981;">voucher de pago</strong> desde "Mis Solicitudes" para que el admin lo verifique.
-                                </p>
-
-                                <button id="btn-go-home-modal" style="background:#FF7A00;color:white;border:none;padding:15px 28px;border-radius:12px;font-weight:800;font-size:1rem;cursor:pointer;width:100%;transition:opacity 0.2s;" onmouseover="this.style.opacity=0.88" onmouseout="this.style.opacity=1">
-                                    Ir al Panel Principal
-                                </button>
-                            </div>
-                        `;
-                        document.body.appendChild(modalEl);
-                        document.getElementById('btn-go-home-modal').addEventListener('click', () => {
-                            modalEl.remove();
-                            Router.navigateTo('/');
-                        });
+                        const modal = document.getElementById('success-modal');
+                        if (modal) modal.classList.add('active');
                     } else {
                         throw new Error(result.error);
                     }
                 } catch (err) {
-                    alert("Error: " + err.message);
+                    alert("Error al solicitar: " + err.message);
                 } finally {
                     btnSubmit.disabled = false;
                     btnSubmit.innerHTML = oldContent;
@@ -2021,12 +1654,12 @@ const App = {
             });
         }
 
-        // Auto-llenar datos si está logueado
+        // Pre-fill if logged in
         if (AppState.user) {
-            const nameInp = document.getElementById('client-name');
-            const emailInp = document.getElementById('client-email');
-            if (nameInp) nameInp.value = AppState.user.name || '';
-            if (emailInp) emailInp.value = AppState.user.email || '';
+            const nameInput = document.getElementById('client-name');
+            const emailInput = document.getElementById('client-email');
+            if (nameInput) nameInput.value = AppState.user.name || '';
+            if (emailInput) emailInput.value = AppState.user.email || '';
         }
     },
 
@@ -2034,6 +1667,183 @@ const App = {
         if (AppState.map) { AppState.map.remove(); AppState.map = null; }
         document.getElementById('app').innerHTML = renderSeed();
         loadSeed();
+    },
+
+    loadAdminDashboard() {
+        if (AppState.map) { AppState.map.remove(); AppState.map = null; }
+
+        // Ensure user is loaded and is admin
+        if (!AppState.user || AppState.user.userType !== 'admin') {
+            document.getElementById('app').innerHTML = renderAdminDashboard(AppState.user);
+            return;
+        }
+
+        // Cleanup old listeners
+        if (AppState.adminListeners) {
+            AppState.adminListeners.forEach(unsub => unsub());
+        }
+        AppState.adminListeners = [];
+
+        let pending = null;
+        let completed = null;
+        let professionals = null;
+        let pendingWithdrawals = [];
+        let ongoingContracts = null;
+        let companies = null;
+        let finishedHistory = null;
+        let withdrawalHistory = [];
+
+        this.adminData = { pending, completed, professionals, pendingWithdrawals, ongoingContracts, companies, finishedHistory, withdrawalHistory };
+
+        const renderBoth = () => {
+            this.adminData = { pending, completed, professionals, pendingWithdrawals, ongoingContracts, companies, finishedHistory, withdrawalHistory };
+            document.getElementById('app').innerHTML = renderAdminDashboard(AppState.user, pending, completed, professionals, pendingWithdrawals, ongoingContracts, companies, finishedHistory, withdrawalHistory);
+            this.bindAdminEvents();
+        };
+
+        // Initial loading state
+        document.getElementById('app').innerHTML = renderAdminDashboard(AppState.user, pending, completed, professionals, pendingWithdrawals, ongoingContracts, companies, finishedHistory, withdrawalHistory);
+
+        import('./services/database.js?v=258.4').then(({ listenForPendingPayments, listenForCompletedServices, getProfessionalsForAdmin, getPendingWithdrawals, listenForOngoingContracts, getCompaniesForAdmin, listenForFinishedHistory, listenForWithdrawalHistory }) => {
+            const unsub1 = listenForPendingPayments((data) => { pending = data; renderBoth(); });
+            const unsub2 = listenForCompletedServices((data) => { completed = data; renderBoth(); });
+            const unsub3 = listenForOngoingContracts((data) => { ongoingContracts = data; renderBoth(); });
+            const unsub4 = listenForFinishedHistory((data) => { finishedHistory = data; renderBoth(); });
+            const unsubWithdrawHistory = listenForWithdrawalHistory((data) => { withdrawalHistory = data; renderBoth(); });
+            
+            getProfessionalsForAdmin().then(data => { professionals = data; renderBoth(); });
+            getPendingWithdrawals().then(data => { pendingWithdrawals = data; renderBoth(); });
+            getCompaniesForAdmin().then(data => { companies = data; renderBoth(); });
+
+            AppState.adminListeners.push(unsub1, unsub2, unsub3, unsub4, unsubWithdrawHistory);
+        });
+    },
+
+
+
+    bindAdminEvents() {
+        // Logout
+        const btnLogout = document.getElementById('btn-logout-admin');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', async () => {
+                if (AppState.adminListeners) {
+                    AppState.adminListeners.forEach(unsub => unsub());
+                }
+                await logoutUser();
+                Router.navigateTo('/login');
+            });
+        }
+
+        // Vouchers Ingreso
+        document.querySelectorAll('.btn-approve-pay').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                const amount = parseFloat(e.currentTarget.dataset.amount);
+                if (confirm("¿Aprobar este pago de empresa?")) {
+                    import('./services/database.js').then(async ({ approvePayment }) => {
+                        await approvePayment(id, amount);
+                    });
+                }
+            };
+        });
+
+        document.querySelectorAll('.btn-reject-pay').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (confirm("¿Rechazar este pago?")) {
+                    import('./services/database.js').then(async ({ updateServiceRequestStatus }) => {
+                        await updateServiceRequestStatus(id, 'awaiting_payment');
+                    });
+                }
+            };
+        });
+
+        // Contratos en curso (Aprobar Manual)
+        document.querySelectorAll('.btn-approve-manual').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                const amount = parseFloat(e.currentTarget.dataset.amount);
+                const newAmount = prompt("Confirmar monto para este contrato (S/):", amount);
+                if (newAmount) {
+                    import('./services/database.js').then(async ({ approvePayment }) => {
+                        await approvePayment(id, parseFloat(newAmount));
+                    });
+                }
+            };
+        });
+
+        // Subir Captura de Pago a Especialista
+        document.querySelectorAll('.btn-upload-prof-voucher').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async (ev) => {
+                    const file = ev.target.files[0];
+                    if (!file) return;
+                    import('./services/database.js').then(async ({ uploadProfessionalVoucher }) => {
+                        await uploadProfessionalVoucher(id, file);
+                    });
+                };
+                input.click();
+            };
+        });
+
+        // Retiros
+        document.querySelectorAll('.btn-mark-paid-withdrawal').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (confirm("¿Marcar este retiro como pagado al profesional?")) {
+                    import('./services/database.js').then(async ({ markWithdrawalAsPaid }) => {
+                        await markWithdrawalAsPaid(id);
+                    });
+                }
+            };
+        });
+
+        document.querySelectorAll('.btn-delete-withdrawal').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (confirm("¿Eliminar este registro del historial?")) {
+                    import('./services/database.js').then(async ({ deleteWithdrawalRecord }) => {
+                        await deleteWithdrawalRecord(id);
+                    });
+                }
+            };
+        });
+
+        // Validación de Especialistas
+        document.querySelectorAll('.btn-approve-pro').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (confirm("¿Aprobar especialista?")) {
+                    import('./services/database.js').then(async ({ updateProfessionalStatus }) => {
+                        await updateProfessionalStatus(id, 'approved');
+                    });
+                }
+            };
+        });
+
+        document.querySelectorAll('.btn-reject-pro').forEach(btn => {
+            btn.onclick = async (e) => {
+                const id = e.currentTarget.dataset.id;
+                const reason = prompt("Motivo de la observación:");
+                if (reason) {
+                    import('./services/database.js').then(async ({ updateProfessionalStatus }) => {
+                        await updateProfessionalStatus(id, 'rejected', reason);
+                    });
+                }
+            };
+        });
+
+        // Ver Voucher (Lightbox simple)
+        document.querySelectorAll('.btn-view-voucher').forEach(btn => {
+            btn.onclick = () => {
+                const url = btn.dataset.url;
+                window.open(url, '_blank');
+            };
+        });
     }
 };
 

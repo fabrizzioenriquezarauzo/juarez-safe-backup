@@ -1,0 +1,112 @@
+
+    loadAdminDashboard() {
+        if (AppState.map) { AppState.map.remove(); AppState.map = null; }
+
+        if (!AppState.user || AppState.user.userType !== 'admin') {
+            document.getElementById('app').innerHTML = renderAdminDashboard(AppState.user);
+            return;
+        }
+
+        // Cleanup old listeners
+        if (AppState.adminListeners) {
+            AppState.adminListeners.forEach(unsub => unsub());
+        }
+        AppState.adminListeners = [];
+
+        let pending = [];
+        let completed = [];
+        let professionals = [];
+        let pendingWithdrawals = [];
+        let ongoingContracts = [];
+        let companies = [];
+        let finishedHistory = [];
+        let withdrawalHistory = [];
+
+        const renderBoth = () => {
+            document.getElementById('app').innerHTML = renderAdminDashboard(
+                AppState.user, 
+                pending, 
+                completed, 
+                professionals, 
+                pendingWithdrawals, 
+                ongoingContracts, 
+                companies, 
+                finishedHistory, 
+                withdrawalHistory
+            );
+            this.bindAdminEvents();
+        };
+
+        // Initial loading state
+        renderBoth();
+
+        import('./services/database.js').then(({ 
+            listenForPendingPayments, 
+            listenForCompletedServices, 
+            getProfessionalsForAdmin, 
+            getPendingWithdrawals, 
+            listenForOngoingContracts, 
+            getCompaniesForAdmin, 
+            listenForFinishedHistory, 
+            listenForWithdrawalHistory 
+        }) => {
+            const unsub1 = listenForPendingPayments((data) => { pending = data; renderBoth(); });
+            const unsub2 = listenForCompletedServices((data) => { completed = data; renderBoth(); });
+            const unsub3 = listenForOngoingContracts((data) => { ongoingContracts = data; renderBoth(); });
+            const unsub4 = listenForFinishedHistory((data) => { finishedHistory = data; renderBoth(); });
+            
+            getProfessionalsForAdmin().then(data => { professionals = data; renderBoth(); });
+            getPendingWithdrawals().then(data => { pendingWithdrawals = data; renderBoth(); });
+            getCompaniesForAdmin().then(data => { companies = data; renderBoth(); });
+
+            AppState.adminListeners.push(unsub1, unsub2, unsub3, unsub4);
+        });
+    },
+
+    bindAdminEvents() {
+        // Logout
+        const btnLogout = document.getElementById('btn-logout-admin');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', async () => {
+                if (AppState.adminListeners) {
+                    AppState.adminListeners.forEach(unsub => unsub());
+                }
+                import('./services/auth.js').then(async ({ logoutUser }) => {
+                    await logoutUser();
+                    Router.navigateTo('/login');
+                });
+            });
+        }
+
+        // Approve Professional Document Verification
+        document.querySelectorAll('.btn-approve-prof').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const uid = e.currentTarget.dataset.id;
+                import('./services/database.js').then(async (db) => {
+                    await db.updateProfessionalStatus(uid, 'aprobada');
+                    alert("Especialista aprobado.");
+                });
+            });
+        });
+
+        // Company Actions
+        document.querySelectorAll('.btn-approve-company').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.dataset.id;
+                import('./services/database.js').then(async (db) => {
+                    await db.updateCompanyStatus(id, 'aprobada');
+                    alert("Empresa aprobada.");
+                });
+            });
+        });
+
+        document.querySelectorAll('.btn-reject-company').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.dataset.id;
+                import('./services/database.js').then(async (db) => {
+                    await db.updateCompanyStatus(id, 'observada');
+                    alert("Empresa observada.");
+                });
+            });
+        });
+    },

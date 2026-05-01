@@ -152,22 +152,13 @@ export const renderCheckout = (professional) => {
                             <span style="color:#94A3B8; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;">N° Cuenta <i class="fa-regular fa-copy" style="margin-left:4px;"></i></span>
                             <p style="margin:3px 0 0; color:#FF7A00; font-weight:800; font-size:1rem; letter-spacing:1px;">898 3136153503</p>
                         </div>
-                        <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:12px; margin-bottom:8px; border:1px solid rgba(255,122,0,0.2); cursor:pointer;" onclick="navigator.clipboard.writeText('00389801313615350345'); showToast('¡CCI copiado!','success')">
+                        <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:12px; border:1px solid rgba(255,122,0,0.2); cursor:pointer;" onclick="navigator.clipboard.writeText('00389801313615350345'); showToast('¡CCI copiado!','success')">
                             <span style="color:#94A3B8; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;">CCI <i class="fa-regular fa-copy" style="margin-left:4px;"></i></span>
                             <p style="margin:3px 0 0; color:#fff; font-weight:700; font-size:0.85rem; letter-spacing:0.5px;">0038 9801 3136 1535 0345</p>
                         </div>
-                        <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:12px; margin-bottom:8px; border:1px solid rgba(16,185,129,0.3); cursor:pointer;" onclick="navigator.clipboard.writeText('915079361'); showToast('¡Yape copiado!','success')">
-                            <span style="color:#94A3B8; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;">📱 Yape <i class="fa-regular fa-copy" style="margin-left:4px;"></i></span>
-                            <p style="margin:3px 0 0; color:#10B981; font-weight:800; font-size:1rem; letter-spacing:1px;">915 079 361</p>
-                            <p style="margin:2px 0 0; color:#64748B; font-size:0.7rem;">Gerson Enriquez Arauzo</p>
-                        </div>
-                        <div style="margin-top:12px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:10px 12px; display:flex; align-items:flex-start; gap:8px;">
-                            <i class="fa-solid fa-file-signature" style="color:#F59E0B; margin-top:2px; flex-shrink:0;"></i>
-                            <p style="margin:0; color:#94A3B8; font-size:0.75rem; line-height:1.5;"><strong style="color:#F59E0B;">Opción alternativa:</strong> Adjunta una declaración jurada de pago al finalizar el servicio desde "Mis Solicitudes".</p>
-                        </div>
-                        <div style="margin-top:8px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 12px; display:flex; align-items:flex-start; gap:8px;">
+                        <div style="margin-top:12px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 12px; display:flex; align-items:flex-start; gap:8px;">
                             <i class="fa-solid fa-circle-info" style="color:#10B981; margin-top:2px; flex-shrink:0;"></i>
-                            <p style="margin:0; color:#94A3B8; font-size:0.75rem; line-height:1.5;">Envía tu solicitud y luego realiza el pago. <strong style="color:#10B981;">Sube tu voucher desde "Mis Solicitudes".</strong></p>
+                            <p style="margin:0; color:#94A3B8; font-size:0.75rem; line-height:1.5;">Envía tu solicitud y luego realiza la transferencia. <strong style="color:#10B981;">Sube tu voucher desde "Mis Solicitudes".</strong></p>
                         </div>
                     </div>
 
@@ -194,22 +185,13 @@ export const renderCheckout = (professional) => {
                     </div>
                     <h2 style="font-size:1.6rem; color:#FFFFFF; margin-bottom:8px;">¡Solicitud Enviada!</h2>
                     <p style="color:#94A3B8; margin-bottom:24px; font-size:0.95rem; line-height:1.6;">Hemos notificado a <strong style="color:#FFFFFF;">${professional.name}</strong>. Ahora <strong style="color:#FF7A00;">realiza la transferencia</strong> para reservar el servicio:</p>
-                    <div style="background:#0F172A; border:2px solid #FF7A00; border-radius:14px; padding:20px; text-align:left; margin-bottom:16px;">
+                    <div style="background:#0F172A; border:2px solid #FF7A00; border-radius:14px; padding:20px; text-align:left; margin-bottom:24px;">
                         <p style="color:#94A3B8; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px;">🏦 Banco</p>
-                        <p style="color:#fff; font-weight:800; margin:0 0 12px;">INTERBANK</p>
+                        <p style="color:#fff; font-weight:800; margin:0 0 14px;">INTERBANK</p>
                         <p style="color:#94A3B8; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px;">N° de Cuenta</p>
-                        <p style="color:#FF7A00; font-weight:800; font-size:1.1rem; letter-spacing:1px; margin:0 0 12px;">898 3136153503</p>
+                        <p style="color:#FF7A00; font-weight:800; font-size:1.1rem; letter-spacing:1px; margin:0 0 14px;">898 3136153503</p>
                         <p style="color:#94A3B8; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px;">CCI</p>
                         <p style="color:#fff; font-weight:700; margin:0;">0038 9801 3136 1535 0345</p>
-                    </div>
-                    <div style="background:#0F172A; border:2px solid #10B981; border-radius:14px; padding:16px; text-align:left; margin-bottom:16px;">
-                        <p style="color:#94A3B8; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px;">📱 Yape</p>
-                        <p style="color:#10B981; font-weight:800; font-size:1.1rem; letter-spacing:1px; margin:0 0 4px;">915 079 361</p>
-                        <p style="color:#64748B; font-size:0.75rem; margin:0;">Gerson Enriquez Arauzo</p>
-                    </div>
-                    <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:12px 16px; text-align:left; margin-bottom:20px; display:flex; align-items:flex-start; gap:10px;">
-                        <i class="fa-solid fa-file-signature" style="color:#F59E0B; flex-shrink:0; margin-top:2px;"></i>
-                        <p style="margin:0; color:#94A3B8; font-size:0.8rem; line-height:1.5;"><strong style="color:#F59E0B;">Opción alternativa:</strong> Adjunta una declaración jurada de pago al finalizar el servicio desde "Mis Solicitudes".</p>
                     </div>
                     <p style="color:#94A3B8; font-size:0.82rem; margin-bottom:20px;">Después de transferir, sube tu <strong style="color:#10B981;">voucher de pago</strong> desde "Mis Solicitudes" para que el admin lo verifique.</p>
                     <button class="btn-primary" onclick="window.location.hash='#/'" style="padding:14px 28px; width:100%;">Ir al Panel Principal</button>

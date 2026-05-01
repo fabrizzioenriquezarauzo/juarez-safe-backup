@@ -50,15 +50,16 @@
 body {
     background-color: var(--bg-light);
     color: var(--text-main);
-    overflow: hidden;
+    overflow: auto;
 }
 
 /* Base App Container */
 #app {
     position: relative;
     width: 100vw;
-    height: 100vh;
-    overflow: hidden;
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
 }
 
 /* Map takes full screen, no flex */

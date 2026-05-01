@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Archivos de perfil de usuario
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      // Permitir write a usuarios autenticados que coincidan o si la foto se sube anónimamente en registro (?)
+      // En ProfileView, el usuario SI está autenticado. Pero en registro, capaz no.
+      // Así que dejaremos que escriba con un tempId si es que subiera foto (aunque profile photo usualmente es en ProfileView)
+      allow write: if true; 
+    }
+
+    // Documentos / certificaciones de profesionales - usando 'documents' en vez de 'documentos'
+    match /documents/{userId}/{allPaths=**} {
+      allow read: if true;
+      // En RegisterView, de hecho se suben con un tempId ANTES de crear la cuenta.
+      // Para no bloquear el registro, temporalmente lo abriremos para write:
+      allow write: if true; 
+    }
+
+    // Archivos adjuntos del chat / servicios
+    match /chats/{chatId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.resource.size < 10 * 1024 * 1024; // max 10 MB
+    }
+
+    // Vouchers de pago
+    match /vouchers/{requestId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Bloquear todo lo demás por defecto
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -40,6 +40,17 @@ export const renderProfile = (user) => {
                         <i class="fa-solid fa-cloud-arrow-up"></i> Seleccionar Foto Real
                     </label>
                 </div>
+
+                <!-- 0.5 Almanaque de Trabajo (NUEVO) -->
+                <div style="margin-bottom: 40px;">
+                    <h3 style="color: #FF7A00; font-size: 1.1rem; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-regular fa-calendar-days"></i> Mi Calendario de Trabajo
+                    </h3>
+                    <div id="prof-almanac-container" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:16px; padding:20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="color:#64748B; font-size:0.9rem; text-align:center; padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando calendario...</div>
+                    </div>
+                </div>
+
                 <!-- 1. Documentación Obligatoria -->
                 <div style="margin-bottom: 32px;">
                     <h3 style="color: #2563EB; font-size: 1rem; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
@@ -47,10 +58,10 @@ export const renderProfile = (user) => {
                     </h3>
                     
                     <div class="upload-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        ${renderUploadCard('prof-doc-dni', 'DNI', 'fa-id-card', user?.documentation?.dni)}
-                        ${renderUploadCard('prof-doc-certiadulto', 'Certiadulto', 'fa-shield-halved', user?.documentation?.certiadulto)}
-                        ${renderUploadCard('prof-doc-cv', 'CV SST', 'fa-file-pdf', user?.documentation?.cv)}
-                        ${renderUploadCard('prof-doc-certs', 'Cert. Médico Ocupacional', 'fa-certificate', user?.documentation?.certs)}
+                        ${renderUploadCard('prof-doc-dni', 'DNI', 'fa-id-card', user?.documentation?.dniUrl || user?.documentation?.dni)}
+                        ${renderUploadCard('prof-doc-certiadulto', 'Certiadulto', 'fa-shield-halved', user?.documentation?.certiadultoUrl || user?.documentation?.certiadulto)}
+                        ${renderUploadCard('prof-doc-cv', 'CV SST', 'fa-file-pdf', user?.documentation?.cvUrl || user?.documentation?.cv)}
+                        ${renderUploadCard('prof-doc-certs', 'Cert. Médico Ocupacional', 'fa-certificate', user?.documentation?.certificadosUrl || user?.documentation?.certs || user?.documentation?.certificados)}
                         ${renderUploadCard('prof-doc-recibo', 'RHE', 'fa-file-invoice-dollar', user?.documentation?.recibo)}
                     </div>
                 </div>
@@ -73,7 +84,7 @@ export const renderProfile = (user) => {
                 <div style="margin-bottom: 32px;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div class="input-group">
-                            <label style="display: block; color: #475569; font-size: 0.7rem; margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Especialidad</label>
+                            <label style="display: block; color: #475569; font-size: 0.7rem; margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Nivel Profesional</label>
                             <select id="prof-specialty" style="width: 100%; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px; color: #0F172A; outline: none; font-size: 0.9rem;">
                                 <option value="Tecnico" ${user?.specialty === 'Tecnico' ? 'selected' : ''}>Técnico SST</option>
                                 <option value="Universitario" ${user?.specialty === 'Universitario' ? 'selected' : ''}>Universitario SST</option>
@@ -81,7 +92,18 @@ export const renderProfile = (user) => {
                             </select>
                         </div>
                         <div class="input-group">
-                            <label style="display: block; color: #475569; font-size: 0.7rem; margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Tarifa Día</label>
+                            <label style="display: block; color: #475569; font-size: 0.7rem; margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Categoría de Servicio</label>
+                            <select id="prof-category" style="width: 100%; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px; color: #0F172A; outline: none; font-size: 0.9rem;">
+                                <option value="Prevencionista" ${(user?.category || user?.jobCategory) === 'Prevencionista' ? 'selected' : ''}>Prevencionista</option>
+                                <option value="Técnico Electricista" ${(user?.category || user?.jobCategory) === 'Técnico Electricista' ? 'selected' : ''}>Técnico Electricista</option>
+                                <option value="Técnico de Drywall" ${(user?.category || user?.jobCategory) === 'Técnico de Drywall' ? 'selected' : ''}>Técnico de Drywall</option>
+                                <option value="Ama de Casa" ${(user?.category || user?.jobCategory) === 'Ama de Casa' ? 'selected' : ''}>Ama de Casa</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div class="input-group">
+                            <label style="display: block; color: #475569; font-size: 0.7rem; margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Tarifa Día (S/)</label>
                             <input type="number" id="prof-rate" value="${user?.rate || 0}" style="width: 100%; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px; color: #0F172A; outline: none; font-size: 0.9rem;">
                         </div>
                     </div>

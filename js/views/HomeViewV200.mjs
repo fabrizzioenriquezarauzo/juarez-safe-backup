@@ -33,7 +33,6 @@ export const renderHome = (user) => {
         </div>
 
         <!-- Sidebar / List (Ride-Sharing Style) -->
-        ${(user && user.userType === 'client' && (user.status === 'pendiente' || user.status === 'observada' || user.validationStatus === 'pendiente' || user.validationStatus === 'observada')) ? '' : `
         <aside class="sidebar">
             <div class="sheet-handle"></div>
             <div class="sidebar-header">
@@ -45,9 +44,12 @@ export const renderHome = (user) => {
                 <div class="logo-wrapper" style="display:none;">
                     <img src="img/logo.png" alt="Logo" class="logo">
                 </div>
-                <div class="filters">
+                <div class="filters" style="flex-wrap:wrap; gap:6px;">
                     <button class="filter-btn active" data-filter="all">Todos</button>
-                    <!-- v230: Categorías dinámicas removidas para estabilidad en reversión -->
+                    <button class="filter-btn" data-filter="prevencion"><i class="fa-solid fa-hard-hat"></i> Prevención</button>
+                    <button class="filter-btn" data-filter="electricidad"><i class="fa-solid fa-bolt"></i> Electricista</button>
+                    <button class="filter-btn" data-filter="drywall"><i class="fa-solid fa-hammer"></i> Drywall</button>
+                    <button class="filter-btn" data-filter="hogar"><i class="fa-solid fa-broom"></i> Hogar</button>
                 </div>
             </div>
             
@@ -60,7 +62,6 @@ export const renderHome = (user) => {
                 <!-- Professionals cards will be injected here -->
             </div>
         </aside>
-        `}
 
         <!-- Floating Top Navigation Overlay -->
         <div class="top-nav">
@@ -89,24 +90,9 @@ export const renderHome = (user) => {
   
         <!-- Map Container -->
         <main class="main-content">
-            ${(user && user.userType === 'client' && (user.status === 'pendiente' || user.status === 'observada' || user.validationStatus === 'pendiente' || user.validationStatus === 'observada')) ? `
-                <div style="height:100%; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background: #0F172A; color: white; padding: 20px; text-align:center;">
-                    <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(245, 158, 11, 0.1); color: #F59E0B; display:flex; align-items:center; justify-content:center; font-size: 2rem; margin-bottom: 24px;">
-                        <i class="fa-solid fa-clock-rotate-left"></i>
-                    </div>
-                    <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 12px;">Cuenta en Revisión</h2>
-                    <p style="color: #94A3B8; max-width: 400px; line-height: 1.6; margin-bottom: 32px;">
-                        Tu registro como empresa ha sido recibido con éxito. Nuestro equipo administrativo está validando tu RUC y Razón Social. Recibirás un correo cuando tu cuenta sea aprobada.
-                    </p>
-                    <button onclick="window.location.reload()" class="btn-primary" style="padding: 12px 24px; font-size: 0.9rem;">
-                        <i class="fa-solid fa-rotate"></i> Verificar Estado
-                    </button>
-                </div>
-            ` : `
-                <div class="map-container" id="map">
-                    <!-- Leaflet Map -->
-                </div>
-            `}
+            <div class="map-container" id="map">
+                <!-- Leaflet Map -->
+            </div>
         </main>
     
         <div class="modal-overlay" id="prof-modal">

@@ -1,0 +1,84 @@
+
+    bindAdminEvents() {
+        // Modal Action Cards
+        document.querySelectorAll('.admin-action-card, .admin-card-btn').forEach(card => {
+            card.addEventListener('click', (e) => {
+                const type = e.currentTarget.dataset.modal;
+                if (type) this.openAdminModal(type);
+            });
+        });
+
+        // Close Modal
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        if (btnCloseModal) {
+            btnCloseModal.addEventListener('click', () => {
+                const modal = document.getElementById('admin-modal-overlay');
+                if (modal) modal.style.display = 'none';
+            });
+        }
+
+        // Logout
+        const btnLogout = document.getElementById('btn-logout-admin');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', async () => {
+                if (AppState.adminListeners) {
+                    AppState.adminListeners.forEach(unsub => unsub());
+                }
+                import('./services/auth.js').then(async ({ logoutUser }) => {
+                    await logoutUser();
+                    Router.navigateTo('/login');
+                });
+            });
+        }
+
+        // --- Actions inside Modals ---
+
+        // Approve Specialist
+        document.querySelectorAll('.btn-approve-prof').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const uid = e.currentTarget.dataset.id;
+                if (confirm("¿Aprobar especialista?")) {
+                    import('./services/database.js').then(async (db) => {
+                        await db.updateProfessionalStatus(uid, 'aprobada');
+                        alert("Especialista aprobado.");
+                    });
+                }
+            });
+        });
+
+        // Approve Client Payment (Voucher)
+        document.querySelectorAll('.btn-approve-pay').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const reqId = e.currentTarget.dataset.id;
+                const amount = parseFloat(e.currentTarget.dataset.amount);
+                if (confirm("¿Confirmar recepción de pago de S/ " + amount + "?")) {
+                    import('./services/database.js').then(async (db) => {
+                        await db.approvePayment(reqId, amount);
+                        alert("Pago aprobado.");
+                    });
+                }
+            });
+        });
+
+        // Company Actions
+        document.querySelectorAll('.btn-approve-company').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.dataset.id;
+                import('./services/database.js').then(async (db) => {
+                    await db.updateCompanyStatus(id, 'aprobada');
+                    alert("Empresa aprobada.");
+                });
+            });
+        });
+
+        document.querySelectorAll('.btn-reject-company').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.dataset.id;
+                import('./services/database.js').then(async (db) => {
+                    await db.updateCompanyStatus(id, 'observada');
+                    alert("Empresa observada.");
+                });
+            });
+        });
+
+    },

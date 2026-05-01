@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType == 'admin';
+    }
+
+    // Colección de Usuarios
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // Colección de Profesionales (SST)
+    match /professionals/{profId} {
+      allow read: if true;
+      allow write: if isOwner(profId) || isAdmin();
+    }
+
+    // Colección de Empresas/Clientes
+    match /companies/{companyId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(companyId) || isAdmin();
+    }
+
+    // Solicitudes de Servicio (camelCase) - ADMIN puede leer TODO
+    match /serviceRequests/{requestId} {
+      allow read: if isAdmin();
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.clientId || 
+        request.auth.uid == resource.data.professionalId
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        request.auth.uid == resource.data.clientId || 
+        request.auth.uid == resource.data.professionalId ||
+        isAdmin()
+      );
+    }
+
+    // Solicitudes de Servicio (snake_case) - por compatibilidad
+    match /service_requests/{requestId} {
+      allow read: if isAdmin();
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.clientId || 
+        request.auth.uid == resource.data.professionalId
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        request.auth.uid == resource.data.clientId || 
+        request.auth.uid == resource.data.professionalId ||
+        isAdmin()
+      );
+    }
+
+    // Chat / Mensajes
+    match /messages/{messageId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+    }
+
+    // Reseñas
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && request.auth.uid == resource.data.clientId;
+    }
+
+    // Retiros (Withdrawals)
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.professionalId);
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

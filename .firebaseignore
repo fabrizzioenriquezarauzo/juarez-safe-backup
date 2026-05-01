@@ -1,0 +1,10 @@
+node_modules/
+.git/
+.firebase/
+.firebaserc
+firebase.json
+firebase-debug.log
+firebase-debug.*.log
+*.md
+.gemini/
+.DS_Store
