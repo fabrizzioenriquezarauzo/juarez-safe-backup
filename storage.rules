@@ -32,6 +32,18 @@ service firebase.storage {
       allow write: if true;
     }
 
+    // Certificados PDF (subidos por admin) y vouchers de solicitud (subidos por usuario)
+    match /certificates/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Vouchers de membresía de empresas
+    match /memberships/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Bloquear todo lo demás por defecto
     match /{allPaths=**} {
       allow read, write: if false;

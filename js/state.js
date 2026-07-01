@@ -7,15 +7,12 @@ export const AppState = {
     userLocation: { lat: -12.0464, lng: -77.0428 }, // Default: Lima
     selectedFilter: 'all',
     selectedProfessional: null,
-    user: null,
+    user: undefined, // undefined = cargando, null = sin sesión, objeto = sesión activa
     serviceListenerUnsubscribe: null,
     radarListenerUnsubscribe: null,
     professionalsListenerUnsubscribe: null,
     companiesListenerUnsubscribe: null,
-    categories: [
-        { id: 'prevencion', name: 'Prevención' },
-        { id: 'electricidad', name: 'Eléctricista' },
-        { id: 'drywall', name: 'Drywall' },
-        { id: 'hogar', name: 'Hogar' }
-    ]
+    adminListeners: [],
+    certificateCourses: [],
+    selectedCertCourse: null,
 };

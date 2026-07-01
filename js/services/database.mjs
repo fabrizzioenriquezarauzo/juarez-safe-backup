@@ -414,8 +414,8 @@ export const getProfessionalStats = async (profId) => {
             const data = doc.data();
             // Solo cuentan servicios donde el pago ya fue aprobado por el admin o ya se completaron
             if (['approved', 'completed', 'paid_to_professional'].includes(data.status)) {
-                // El profesional gana el 85% (el admin se queda con el 15% de comisión)
-                const earnings = data.profEarnings || (Number(data.totalAmount || 0) * 0.85);
+                // El profesional gana el 100% (cero comisiones)
+                const earnings = data.profEarnings !== undefined ? data.profEarnings : Number(data.totalAmount || 0);
                 totalEarnings += earnings;
                 if (data.status === 'completed' || data.status === 'paid_to_professional') completedServices++;
             }
@@ -685,8 +685,8 @@ export const listenForPendingPayments = (callback) => {
 export const approvePayment = async (requestId, totalAmount) => {
     try {
         const docRef = doc(db, "serviceRequests", requestId);
-        const commission = totalAmount * 0.15;
-        const profEarnings = totalAmount * 0.85;
+        const commission = 0;
+        const profEarnings = totalAmount;
 
         await updateDoc(docRef, {
             status: 'approved',
@@ -884,6 +884,104 @@ export const updateCompanyValidationStatus = async (uid, status) => {
 };
 
 /**
+ * Actualiza el estado de membresía de una empresa.
+ */
+export const updateCompanyMembershipStatus = async (uid, status) => {
+    try {
+        const userRef = doc(db, "users", uid);
+        const updateData = {
+            membershipStatus: status,
+            updatedAt: serverTimestamp()
+        };
+        if (status === 'active') {
+            const expiry = new Date();
+            expiry.setDate(expiry.getDate() + 30);
+            updateData.membershipExpiry = expiry.toISOString();
+        }
+        await updateDoc(userRef, updateData);
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating company membership status:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Sube voucher de membresía de empresa.
+ */
+export const uploadMembershipVoucher = async (uid, file) => {
+    return new Promise((resolve) => {
+        try {
+            const storageRef = ref(storage, `memberships/${uid}/voucher_${Date.now()}.jpg`);
+            const uploadTask = uploadBytesResumable(storageRef, file);
+
+            uploadTask.on('state_changed', null,
+                (error) => resolve({ success: false, error: error.message }),
+                async () => {
+                    try {
+                        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                        
+                        const paymentsRef = collection(db, "membershipPayments");
+                        await addDoc(paymentsRef, {
+                            companyId: uid,
+                            voucherUrl: downloadURL,
+                            status: 'pending',
+                            createdAt: serverTimestamp()
+                        });
+                        
+                        const userRef = doc(db, "users", uid);
+                        await updateDoc(userRef, {
+                            membershipStatus: 'verifying',
+                            updatedAt: serverTimestamp()
+                        });
+                        
+                        resolve({ success: true, url: downloadURL });
+                    } catch (err) {
+                        resolve({ success: false, error: err.message });
+                    }
+                }
+            );
+        } catch (error) {
+            resolve({ success: false, error: error.message });
+        }
+    });
+};
+
+/**
+ * Escucha pagos de membresía pendientes para el admin
+ */
+export const listenForPendingMemberships = (callback) => {
+    const q = query(collection(db, "membershipPayments"), where("status", "==", "pending"));
+    return onSnapshot(q, (snapshot) => {
+        const requests = [];
+        snapshot.forEach((docSnap) => {
+            requests.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        requests.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        callback(requests);
+    }, (error) => {
+        console.error("Error en onSnapshot de memberships:", error);
+    });
+};
+
+/**
+ * Aprueba el pago de una membresía
+ */
+export const approveMembershipPayment = async (paymentId, companyId) => {
+    try {
+        const paymentRef = doc(db, "membershipPayments", paymentId);
+        await updateDoc(paymentRef, {
+            status: 'approved',
+            updatedAt: serverTimestamp()
+        });
+        
+        return await updateCompanyMembershipStatus(companyId, 'active');
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * Elimina el documento de una empresa de la base de datos de usuarios.
  * (Nota: No elimina al usuario de Firebase Auth, pero oculta la empresa de la vista del sistema).
  */
@@ -894,6 +992,196 @@ export const deleteCompanyDocument = async (uid) => {
         return { success: true };
     } catch (error) {
         console.error("Error deleting company document:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * =====================================
+ * MÓDULO DE CERTIFICADOS
+ * =====================================
+ */
+
+/**
+ * Genera un código único de certificado estilo CERT-YYYY-XXXXXX
+ */
+const generateUniqueCode = () => {
+    const year = new Date().getFullYear();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 6; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+    return `CERT-${year}-${rand}`;
+};
+
+/**
+ * Admin sube un certificado PDF y genera código único + QR.
+ * @param {object} params - { userName, userDni, courseName, issueDate, expiryDate, file, adminId }
+ */
+export const uploadCertificatePDF = async ({ userName, userDni, courseName, issueDate, expiryDate, file, adminId, forceCode }) => {
+    try {
+        // Usar el código ya generado por el frontend (que ya tiene el QR incrustado)
+        // o generar uno nuevo si no viene
+        const uniqueCode = forceCode || generateUniqueCode();
+        const fileName = `certificates/pdfs/${uniqueCode}.pdf`;
+        const storageRef = ref(storage, fileName);
+
+        // Subir PDF
+        const uploadTask = uploadBytesResumable(storageRef, file);
+        const pdfUrl = await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed', null,
+                (err) => reject(err),
+                async () => {
+                    const url = await getDownloadURL(uploadTask.snapshot.ref);
+                    resolve(url);
+                }
+            );
+        });
+
+        // Guardar en Firestore
+        await addDoc(collection(db, 'certificates'), {
+            uniqueCode,
+            userName: userName || 'Sin nombre',
+            userDni: userDni || '',
+            courseName: courseName || 'Certificado General',
+            pdfUrl,
+            issueDate: issueDate || null,
+            expiryDate: expiryDate || null,
+            status: 'active',
+            source: 'admin',
+            issuedBy: adminId || 'admin',
+            createdAt: serverTimestamp(),
+        });
+
+        return { success: true, uniqueCode, pdfUrl };
+    } catch (error) {
+        console.error('[uploadCertificatePDF] Error:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Sube voucher de pago para certificado.
+ */
+export const uploadCertificateVoucher = async (uid, file, userName, userDni, courseName) => {
+    return new Promise((resolve) => {
+        try {
+            const storageRef = ref(storage, `certificates/${uid}/voucher_${Date.now()}.jpg`);
+            const uploadTask = uploadBytesResumable(storageRef, file);
+
+            uploadTask.on('state_changed', null,
+                (error) => resolve({ success: false, error: error.message }),
+                async () => {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                    
+                    const certsRef = collection(db, "certificates");
+                    await addDoc(certsRef, {
+                        userId: uid,
+                        userName: userName || 'Usuario Desconocido',
+                        userDni: userDni || 'No provisto',
+                        courseName: courseName,
+                        voucherUrl: downloadURL,
+                        status: 'pending', // pending, active
+                        uniqueCode: '', // Se genera al aprobar
+                        createdAt: serverTimestamp()
+                    });
+                    
+                    resolve({ success: true, url: downloadURL });
+                }
+            );
+        } catch (error) {
+            resolve({ success: false, error: error.message });
+        }
+    });
+};
+
+/**
+ * Escucha solicitudes de certificados pendientes para el admin
+ */
+export const listenForPendingCertificates = (callback) => {
+    const q = query(collection(db, "certificates"), where("status", "==", "pending"));
+    return onSnapshot(q, (snapshot) => {
+        const requests = [];
+        snapshot.forEach((docSnap) => {
+            requests.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        requests.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        callback(requests);
+    }, (error) => {
+        console.error("Error en onSnapshot de certificates:", error);
+    });
+};
+
+/**
+ * Escucha todos los certificados activos (ya emitidos) para mostrar en el admin
+ */
+export const listenForIssuedCertificates = (callback) => {
+    const q = query(collection(db, "certificates"), where("status", "==", "active"));
+    return onSnapshot(q, (snapshot) => {
+        const certs = [];
+        snapshot.forEach((docSnap) => {
+            certs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        certs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        callback(certs);
+    }, (error) => {
+        console.error("Error en onSnapshot de issued certificates:", error);
+    });
+};
+
+
+/**
+ * Aprueba el pago de un certificado y genera el código único
+ */
+export const approveCertificate = async (certificateId) => {
+    try {
+        const certRef = doc(db, "certificates", certificateId);
+        
+        // Generar un código único simple (ej. CERT-2026-XYZ123)
+        const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const year = new Date().getFullYear();
+        const uniqueCode = `CERT-${year}-${randomString}`;
+        
+        await updateDoc(certRef, {
+            status: 'active',
+            uniqueCode: uniqueCode,
+            issueDate: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+        
+        return { success: true, uniqueCode };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Busca un certificado por su código único o DNI
+ */
+export const searchCertificate = async (queryTerm) => {
+    try {
+        const certsRef = collection(db, "certificates");
+        
+        // Primero intentamos por uniqueCode
+        const qCode = query(certsRef, where("uniqueCode", "==", queryTerm), where("status", "==", "active"));
+        const snapshotCode = await getDocs(qCode);
+        
+        if (!snapshotCode.empty) {
+            return { success: true, certificate: { id: snapshotCode.docs[0].id, ...snapshotCode.docs[0].data() } };
+        }
+        
+        // Si no hay por código, intentamos por DNI
+        const qDni = query(certsRef, where("userDni", "==", queryTerm), where("status", "==", "active"));
+        const snapshotDni = await getDocs(qDni);
+        
+        if (!snapshotDni.empty) {
+            // Retorna el más reciente si hay varios
+            const sortedDocs = snapshotDni.docs.sort((a, b) => (b.data().issueDate?.seconds || 0) - (a.data().issueDate?.seconds || 0));
+            return { success: true, certificate: { id: sortedDocs[0].id, ...sortedDocs[0].data() } };
+        }
+        
+        return { success: false, error: 'Certificado no encontrado o no válido.' };
+    } catch (error) {
+        console.error("Error searching certificate:", error);
         return { success: false, error: error.message };
     }
 };
@@ -1151,3 +1439,335 @@ export const updateServiceRequestFields = async (requestId, fields) => {
         return { success: false, error: error.message };
     }
 };
+
+/**
+ * Obtiene la lista de cursos de certificación y sus preguntas
+ */
+export const getCertificateCourses = async () => {
+    try {
+        const q = query(collection(db, "certificate_courses"));
+        const snapshot = await getDocs(q);
+        const courses = [];
+        snapshot.forEach(doc => {
+            courses.push({ id: doc.id, ...doc.data() });
+        });
+        return { success: true, courses };
+    } catch (error) {
+        console.error("Error al obtener cursos:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+export const onCertificateCoursesChanged = (callback) => {
+    const q = query(collection(db, "certificate_courses"));
+    return onSnapshot(q, (snapshot) => {
+        const courses = [];
+        snapshot.forEach(doc => {
+            courses.push({ id: doc.id, ...doc.data() });
+        });
+        callback(courses);
+    }, (error) => {
+        console.error("Error al escuchar courses:", error);
+    });
+};
+
+export const addCertificateCourse = async (courseData) => {
+    try {
+        await addDoc(collection(db, "certificate_courses"), courseData);
+        return { success: true };
+    } catch (error) {
+        console.error("Error al agregar curso:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+export const updateCertificateCourse = async (courseId, courseData) => {
+    try {
+        const docRef = doc(db, "certificate_courses", courseId);
+        await updateDoc(docRef, courseData);
+        return { success: true };
+    } catch (error) {
+        console.error("Error al actualizar curso:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+export const deleteCertificateCourse = async (courseId) => {
+    try {
+        const docRef = doc(db, "certificate_courses", courseId);
+        await deleteDoc(docRef);
+        return { success: true };
+    } catch (error) {
+        console.error("Error al eliminar curso:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+
+/**
+ * Siembra los cursos iniciales en la base de datos (Ejecutar solo una vez)
+ */
+export const seedCertificateCourses = async () => {
+    const initialCourses = [
+        { 
+            name: "Prevención de Riesgos Laborales", 
+            icon: "fa-shield-halved", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿Qué significan las siglas IPERC?",
+                    options: [
+                        { id: "A", text: "Identificación de Peligros, Evaluación de Riesgos y Controles" },
+                        { id: "B", text: "Índice de Prevención y Evaluación de Riesgos Comunes" },
+                        { id: "C", text: "Investigación de Peligros en Riesgos de Construcción" }
+                    ],
+                    correctOption: "A"
+                },
+                {
+                    text: "¿Cuál es el orden de la Jerarquía de Controles?",
+                    options: [
+                        { id: "A", text: "EPP, Administrativo, Ingeniería, Sustitución, Eliminación" },
+                        { id: "B", text: "Eliminación, Sustitución, Ingeniería, Administrativo, EPP" },
+                        { id: "C", text: "Ingeniería, Eliminación, EPP, Administrativo, Sustitución" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "¿Qué es un incidente de trabajo?",
+                    options: [
+                        { id: "A", text: "Suceso con potencial de pérdida que pudo ser accidente" },
+                        { id: "B", text: "Una lesión grave en el área de trabajo" },
+                        { id: "C", text: "Un permiso de trabajo no autorizado" }
+                    ],
+                    correctOption: "A"
+                }
+            ]
+        },
+        { 
+            name: "Trabajos en Altura", 
+            icon: "fa-person-arrow-up-from-line", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿A partir de qué altura se considera trabajo en altura en Perú (Norma G.050)?",
+                    options: [
+                        { id: "A", text: "1.20 metros" },
+                        { id: "B", text: "1.50 metros" },
+                        { id: "C", text: "1.80 metros" }
+                    ],
+                    correctOption: "C"
+                },
+                {
+                    text: "¿Cuál es el punto de anclaje mínimo requerido para el arnés?",
+                    options: [
+                        { id: "A", text: "Soportar 1000 lbs (450 kg)" },
+                        { id: "B", text: "Soportar 5000 lbs (2268 kg) por trabajador" },
+                        { id: "C", text: "Cualquier estructura firme" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "En un sistema anticaídas, ¿qué componente absorbe la energía del impacto?",
+                    options: [
+                        { id: "A", text: "El absorbedor de impacto (shock absorber)" },
+                        { id: "B", text: "El anillo D de la espalda" },
+                        { id: "C", text: "La línea de vida horizontal" }
+                    ],
+                    correctOption: "A"
+                }
+            ]
+        },
+        { 
+            name: "Trabajos en Caliente", 
+            icon: "fa-fire", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿A qué distancia mínima deben alejarse los materiales combustibles de un trabajo en caliente?",
+                    options: [
+                        { id: "A", text: "5 metros" },
+                        { id: "B", text: "11 metros" },
+                        { id: "C", text: "20 metros" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "¿Qué función cumple el vigía de fuego (Fire Watch)?",
+                    options: [
+                        { id: "A", text: "Supervisar el área durante y hasta 30-60 min después del trabajo" },
+                        { id: "B", text: "Soldar las estructuras metálicas" },
+                        { id: "C", text: "Solo firmar el permiso de trabajo" }
+                    ],
+                    correctOption: "A"
+                },
+                {
+                    text: "¿Qué equipo portátil es obligatorio en todo trabajo en caliente?",
+                    options: [
+                        { id: "A", text: "Una manta térmica" },
+                        { id: "B", text: "Un extintor operativo y adecuado" },
+                        { id: "C", text: "Un detector de gases" }
+                    ],
+                    correctOption: "B"
+                }
+            ]
+        },
+        { 
+            name: "Trabajos en Espacios Confinados", 
+            icon: "fa-box-open", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿Cuál es el nivel aceptable de oxígeno en un espacio confinado?",
+                    options: [
+                        { id: "A", text: "15.5% - 18.0%" },
+                        { id: "B", text: "19.5% - 23.5%" },
+                        { id: "C", text: "25.0% - 30.0%" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "¿Qué se debe realizar antes de ingresar a un espacio confinado?",
+                    options: [
+                        { id: "A", text: "Monitoreo de gases y purga/ventilación" },
+                        { id: "B", text: "Ingresar rápidamente para ver si hay peligro" },
+                        { id: "C", text: "Encender fuego para quemar gases tóxicos" }
+                    ],
+                    correctOption: "A"
+                },
+                {
+                    text: "¿Quién no debe entrar al espacio confinado bajo ninguna circunstancia?",
+                    options: [
+                        { id: "A", text: "El trabajador entrante" },
+                        { id: "B", text: "El vigía (Observador)" },
+                        { id: "C", text: "El supervisor de turno" }
+                    ],
+                    correctOption: "B"
+                }
+            ]
+        },
+        { 
+            name: "Primeros Auxilios Básicos", 
+            icon: "fa-truck-medical", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿Cuál es el orden correcto de la regla nemotécnica PAS?",
+                    options: [
+                        { id: "A", text: "Prevenir, Alertar, Socorrer" },
+                        { id: "B", text: "Proteger, Avisar, Socorrer" },
+                        { id: "C", text: "Preguntar, Atender, Sanar" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "En la técnica de RCP en adultos, ¿cuál es el ritmo de compresiones?",
+                    options: [
+                        { id: "A", text: "15 compresiones por 1 ventilación" },
+                        { id: "B", text: "30 compresiones por 2 ventilaciones" },
+                        { id: "C", text: "50 compresiones por 5 ventilaciones" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "¿Qué se debe hacer ante una quemadura térmica leve?",
+                    options: [
+                        { id: "A", text: "Aplicar pasta dental de inmediato" },
+                        { id: "B", text: "Enfriar la zona con agua tibia o a temperatura ambiente por 10-15 min" },
+                        { id: "C", text: "Reventar las ampollas para evitar infección" }
+                    ],
+                    correctOption: "B"
+                }
+            ]
+        },
+        { 
+            name: "Seguridad Eléctrica", 
+            icon: "fa-bolt", 
+            isActive: true,
+            questions: [
+                {
+                    text: "¿Cuál es el primer paso de las 5 Reglas de Oro de la seguridad eléctrica?",
+                    options: [
+                        { id: "A", text: "Prevenir cualquier posible realimentación (Bloqueo/Etiquetado)" },
+                        { id: "B", text: "Desconectar o corte visible de todas las fuentes de tensión" },
+                        { id: "C", text: "Poner a tierra y en cortocircuito" }
+                    ],
+                    correctOption: "B"
+                },
+                {
+                    text: "¿Qué es el sistema LOTO?",
+                    options: [
+                        { id: "A", text: "Lock Out Tag Out (Bloqueo y Etiquetado de energías peligrosas)" },
+                        { id: "B", text: "Logistical Operations Testing (Pruebas Operativas Logísticas)" },
+                        { id: "C", text: "Limitación de Tensión Oscilante" }
+                    ],
+                    correctOption: "A"
+                },
+                {
+                    text: "Si una persona está recibiendo una descarga eléctrica, ¿qué debe hacer primero?",
+                    options: [
+                        { id: "A", text: "Empujarla con las manos para separarla" },
+                        { id: "B", text: "Cortar el suministro de energía principal" },
+                        { id: "C", text: "Lanzarle agua para enfriarla" }
+                    ],
+                    correctOption: "B"
+                }
+            ]
+        }
+    ];
+
+    try {
+        for (const course of initialCourses) {
+            await addDoc(collection(db, "certificate_courses"), course);
+        }
+        console.log("Cursos y preguntas sembrados correctamente.");
+        return { success: true };
+    } catch (error) {
+        console.error("Error al sembrar cursos:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+export const createCertificateRecord = async ({ userName, userDni, courseName, issueDate, expiryDate, adminId, forceCode }) => {
+    try {
+        const uniqueCode = forceCode;
+        await addDoc(collection(db, 'certificates'), {
+            uniqueCode,
+            userName: userName || 'Sin nombre',
+            userDni: userDni || '',
+            courseName: courseName || 'Certificado General',
+            pdfUrl: null,
+            issueDate: issueDate || null,
+            expiryDate: expiryDate || null,
+            status: 'active',
+            source: 'admin',
+            issuedBy: adminId || 'admin',
+            createdAt: serverTimestamp(),
+        });
+        return { success: true, uniqueCode };
+    } catch (error) {
+        console.error('[createCertificateRecord] Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export const attachPDFToCertificate = async (docId, uniqueCode, file) => {
+    try {
+        const fileName = `certificates/pdfs/${uniqueCode}.pdf`;
+        const storageRef = ref(storage, fileName);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+        const pdfUrl = await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed', null,
+                (err) => reject(err),
+                async () => {
+                    const url = await getDownloadURL(uploadTask.snapshot.ref);
+                    resolve(url);
+                }
+            );
+        });
+        await updateDoc(doc(db, 'certificates', docId), { pdfUrl });
+        return { success: true, pdfUrl };
+    } catch(err) {
+        console.error('[attachPDFToCertificate] Error:', err);
+        return { success: false, error: err.message };
+    }
+}

@@ -32,8 +32,10 @@ const Router = {
     },
 
     loadRoute(hash) {
-        // Convert '#/login' to '/login'
-        let path = hash.replace('#', '');
+        // Convert '#/login?param=1' to '/login'
+        let fullPath = hash.replace('#', '');
+        let path = fullPath.split('?')[0]; // Strip query parameters
+        
         if (path === '') path = '/';
 
         // Basic catch-all to home if route not found

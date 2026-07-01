@@ -82,5 +82,24 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
+
+    // Pagos de Membresía (membershipPayments)
+    match /membershipPayments/{paymentId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.companyId);
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // Cursos de Certificación
+    match /certificate_courses/{courseId} {
+      allow read: if true; // Cualquiera puede ver los cursos
+      allow write: if isAdmin(); // Solo admin puede crear/editar/eliminar
+    }
+
+    // Certificados Emitidos
+    match /certificates/{certId} {
+      allow read: if true; // Cualquiera puede verificar un certificado
+      allow write: if isAdmin() || isSignedIn(); 
+    }
   }
 }

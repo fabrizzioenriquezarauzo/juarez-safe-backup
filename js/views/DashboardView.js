@@ -298,11 +298,36 @@ export const renderDashboard = (user) => {
                     </div>
                     <h2 style="color: #fff; font-size: 1.5rem; font-weight: 800; margin-bottom: 8px;">¡Confirmado!</h2>
                     <p style="color: #94A3B8; margin-bottom: 24px; font-size: 0.95rem; line-height: 1.5;">Has aceptado el servicio de <strong id="accepted-client-name" style="color:#fff;">---</strong>.</p>
-                    
-                    <a id="btn-whatsapp-contact" target="_blank" class="btn-primary" style="background:#25D366; text-decoration:none; margin-bottom:12px; font-size:0.9rem;">
-                        <i class="fa-brands fa-whatsapp"></i> Contactar Cliente
-                    </a>
-                    <button onclick="location.reload()" class="btn-outline" style="width:100%; background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:12px; font-size:0.85rem;">Ir al Mapa</button>
+                    <button id="btn-chat-from-accepted" class="btn-primary" style="width:100%; margin-bottom:12px; font-size:0.9rem; background:#2563EB; border:none;">
+                        <i class="fa-solid fa-comments"></i> Abrir Chat con el Cliente
+                    </button>
+                    <button onclick="document.getElementById('service-accepted-modal').classList.remove('active')" class="btn-outline" style="width:100%; background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:12px; font-size:0.85rem;">Cerrar</button>
+                </div>
+            </div>
+
+            <!-- CHAT MODAL -->
+            <div class="modal-overlay" id="chat-modal" style="z-index:10000;">
+                <div class="modal-content" style="max-width:480px;width:96%;padding:0;border:1px solid rgba(37,99,235,0.3);background:#F8FAFC;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+                    <!-- Header -->
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:#2563EB;flex-shrink:0;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <i class="fa-solid fa-comments" style="color:#fff;font-size:1.1rem;"></i>
+                            <div>
+                                <h3 style="margin:0;color:#fff;font-size:1rem;font-weight:800;" id="chat-header-name">Chat</h3>
+                                <p style="margin:0;color:rgba(255,255,255,0.7);font-size:0.72rem;" id="chat-header-sub">Conversación del servicio</p>
+                            </div>
+                        </div>
+                        <button id="close-chat-modal" style="background:rgba(255,255,255,0.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <!-- Messages -->
+                    <div id="chat-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:280px;"></div>
+                    <!-- Input -->
+                    <div style="padding:12px 16px;border-top:1px solid #E2E8F0;background:#fff;flex-shrink:0;display:flex;gap:8px;">
+                        <input id="chat-input" type="text" placeholder="Escribe un mensaje..." style="flex:1;padding:10px 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:0.9rem;outline:none;font-family:inherit;"/>
+                        <button id="btn-send-chat" style="background:#2563EB;color:#fff;border:none;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:700;font-size:0.85rem;">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 

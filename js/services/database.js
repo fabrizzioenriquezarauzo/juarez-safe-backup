@@ -380,9 +380,10 @@ export const getProfessionalStats = async (profId) => {
 
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.status === 'completed' || data.status === 'accepted') {
-                totalEarnings += data.totalAmount || 0;
-                if (data.status === 'completed') completedServices++;
+            // Solo acreditar cuando el servicio esté COMPLETADO, no al aceptar
+            if (data.status === 'completed' || data.status === 'paid_to_professional') {
+                totalEarnings += data.profEarnings || (data.totalAmount * 0.85) || 0;
+                completedServices++;
             }
         });
 
@@ -780,6 +781,100 @@ export const updateCompanyStatus = async (companyId, status) => {
 };
 
 /**
+ * Actualiza el estado de membresía de una empresa
+ */
+export const updateCompanyMembershipStatus = async (uid, status) => {
+    try {
+        const userRef = doc(db, "users", uid);
+        const updateData = {
+            membershipStatus: status,
+            updatedAt: serverTimestamp()
+        };
+        if (status === 'active') {
+            const expiry = new Date();
+            expiry.setDate(expiry.getDate() + 30);
+            updateData.membershipExpiry = expiry.toISOString();
+        }
+        await updateDoc(userRef, updateData);
+        return { success: true };
+    } catch (err) {
+        console.error("updateCompanyMembershipStatus error:", err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Sube voucher de membresía de empresa.
+ */
+export const uploadMembershipVoucher = async (uid, file) => {
+    return new Promise((resolve) => {
+        try {
+            const storageRef = ref(storage, `memberships/${uid}/voucher_${Date.now()}.jpg`);
+            const uploadTask = uploadBytesResumable(storageRef, file);
+
+            uploadTask.on('state_changed', null,
+                (error) => resolve({ success: false, error: error.message }),
+                async () => {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                    
+                    const paymentsRef = collection(db, "membershipPayments");
+                    await addDoc(paymentsRef, {
+                        companyId: uid,
+                        voucherUrl: downloadURL,
+                        status: 'pending',
+                        createdAt: serverTimestamp()
+                    });
+                    
+                    const userRef = doc(db, "users", uid);
+                    await updateDoc(userRef, {
+                        membershipStatus: 'verifying',
+                        updatedAt: serverTimestamp()
+                    });
+                    
+                    resolve({ success: true, url: downloadURL });
+                }
+            );
+        } catch (error) {
+            resolve({ success: false, error: error.message });
+        }
+    });
+};
+
+/**
+ * Escucha pagos de membresía pendientes para el admin
+ */
+export const listenForPendingMemberships = (callback) => {
+    const q = query(collection(db, "membershipPayments"), where("status", "==", "pending"));
+    return onSnapshot(q, (snapshot) => {
+        const requests = [];
+        snapshot.forEach((docSnap) => {
+            requests.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        requests.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        callback(requests);
+    }, (error) => {
+        console.error("Error en onSnapshot de memberships:", error);
+    });
+};
+
+/**
+ * Aprueba el pago de una membresía
+ */
+export const approveMembershipPayment = async (paymentId, companyId) => {
+    try {
+        const paymentRef = doc(db, "membershipPayments", paymentId);
+        await updateDoc(paymentRef, {
+            status: 'approved',
+            updatedAt: serverTimestamp()
+        });
+        
+        return await updateCompanyMembershipStatus(companyId, 'active');
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * Marca un retiro como pagado
  */
 export const markWithdrawalAsPaid = async (withdrawalId) => {
@@ -872,3 +967,40 @@ export const deleteServiceRequest = async (requestId) => {
         return { success: false, error: err.message };
     }
 };
+
+// ============================================================
+// CHAT INTERNO (Firestore subcollection: chats/{reqId}/messages)
+// ============================================================
+
+/**
+ * Envía un mensaje de chat para una solicitud de servicio.
+ */
+export const sendChatMessage = async (reqId, senderId, senderName, text) => {
+    try {
+        const messagesRef = collection(db, 'chats', reqId, 'messages');
+        await addDoc(messagesRef, {
+            senderId,
+            senderName,
+            text: text.trim(),
+            timestamp: serverTimestamp()
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('sendChatMessage error:', err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Escucha en tiempo real los mensajes de chat de una solicitud.
+ * Retorna la función para cancelar la suscripción.
+ */
+export const listenForChatMessages = (reqId, callback) => {
+    const messagesRef = collection(db, 'chats', reqId, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+        const messages = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        callback(messages);
+    });
+};
+

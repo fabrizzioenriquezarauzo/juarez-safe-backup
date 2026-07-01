@@ -1,14 +1,15 @@
 import { AppState } from './state.js';
-import Router from './router.js';
-import { renderHome } from './views/HomeViewV200.js';
+import Router from './router.js?v=MAY9E';
+import { renderHome } from './views/HomeViewV200.js?v=MAY10C';
 import { renderLogin } from './views/LoginView.js';
 import { renderRegister } from './views/RegisterView.js';
 import { renderDashboard } from './views/DashboardView.js';
 import { renderProfile } from './views/ProfileView.js';
 import { renderCheckout } from './views/CheckoutView.js';
 import { renderSeed, loadSeed } from './views/SeedView.js';
-import { renderAdminDashboard } from './views/AdminDashboardView.js?v=MAY5';
-import { AdminController } from './AdminController.js?v=MAY5';
+import { renderAdminDashboard } from './views/AdminDashboardView.js';
+import { renderCertificados, bindCertificadosEvents } from './views/CertificadosView.js?v=MAY12A';
+import { AdminController } from './AdminController.js?v=MAY10B';
 import {
     getProfessionals,
     updateProfessionalProfile,
@@ -42,12 +43,181 @@ import {
     markWithdrawalAsPaid,
     deleteWithdrawalRecord,
     listenForWithdrawalHistory,
-    uploadProfessionalVoucher
+    uploadProfessionalVoucher,
+    sendChatMessage,
+    listenForChatMessages
 } from './services/database.js';
 import { loginUser, registerUser, logoutUser, onAuthChange } from './services/auth.js';
 export { logoutUser }; // Permite que las vistas lo importen desde aquí sin circulares
 import { db } from './services/firebase.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { doc, getDoc, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+// =====================================================================
+// FUNCIONES GLOBALES - Definidas a nivel de módulo para que estén
+// disponibles inmediatamente cuando se usa onclick="window.openCertReq()"
+// =====================================================================
+
+window.openCertVerify = (e) => {
+    if (e) e.preventDefault();
+    const modal = document.getElementById('certificates-portal-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else {
+        console.error('[openCertVerify] Modal certificates-portal-modal no encontrado en el DOM');
+    }
+};
+
+// Cursos de certificación por defecto (siempre disponibles sin necesidad de Firestore)
+const DEFAULT_CERT_COURSES = [
+    {
+        id: 'local-1',
+        name: 'Prevención de Riesgos',
+        icon: 'fa-hard-hat',
+        isActive: true,
+        questions: [
+            { text: '¿Qué significa EPP?', correctOption: 'b', options: [
+                {id:'a', text:'Equipo Personal Permanente'},
+                {id:'b', text:'Equipo de Protección Personal'},
+                {id:'c', text:'Equipo de Prevención Primaria'}
+            ]},
+            { text: '¿Cada cuánto se deben revisar los extintores?', correctOption: 'a', options: [
+                {id:'a', text:'Anualmente'},
+                {id:'b', text:'Cada 5 años'},
+                {id:'c', text:'Solo cuando se usan'}
+            ]},
+            { text: '¿Qué es una ATS?', correctOption: 'c', options: [
+                {id:'a', text:'Análisis de Tareas Simples'},
+                {id:'b', text:'Auditoría de Trabajo Seguro'},
+                {id:'c', text:'Análisis de Trabajo Seguro'}
+            ]}
+        ]
+    },
+    {
+        id: 'local-2',
+        name: 'Trabajo en Altura',
+        icon: 'fa-mountain',
+        isActive: true,
+        questions: [
+            { text: '¿A partir de qué altura se considera trabajo en altura?', correctOption: 'b', options: [
+                {id:'a', text:'1 metro'},
+                {id:'b', text:'1.8 metros'},
+                {id:'c', text:'3 metros'}
+            ]},
+            { text: '¿Qué equipo es obligatorio en trabajo en altura?', correctOption: 'a', options: [
+                {id:'a', text:'Arnés de seguridad'},
+                {id:'b', text:'Casco solamente'},
+                {id:'c', text:'Guantes de cuero'}
+            ]},
+            { text: '¿Qué es el punto de anclaje?', correctOption: 'c', options: [
+                {id:'a', text:'El punto más alto'},
+                {id:'b', text:'La línea de vida'},
+                {id:'c', text:'Punto donde se conecta el equipo anticaídas'}
+            ]}
+        ]
+    },
+    {
+        id: 'local-3',
+        name: 'Trabajos Eléctricos',
+        icon: 'fa-bolt',
+        isActive: true,
+        questions: [
+            { text: '¿Qué es LOTO?', correctOption: 'a', options: [
+                {id:'a', text:'Lockout/Tagout - bloqueo y etiquetado de energía'},
+                {id:'b', text:'Lista de Operaciones Técnicas Obligatorias'},
+                {id:'c', text:'Logística de Trabajos Operativos'}
+            ]},
+            { text: '¿Cuántos voltios tiene la corriente domiciliaria en Perú?', correctOption: 'b', options: [
+                {id:'a', text:'110 V'},
+                {id:'b', text:'220 V'},
+                {id:'c', text:'380 V'}
+            ]},
+            { text: '¿Qué guantes se usan para trabajos eléctricos?', correctOption: 'c', options: [
+                {id:'a', text:'Guantes de cuero'},
+                {id:'b', text:'Guantes de nitrilo'},
+                {id:'c', text:'Guantes dieléctricos'}
+            ]}
+        ]
+    }
+];
+
+window.openCertReq = async (e) => {
+    if (e) e.preventDefault();
+
+    const modal = document.getElementById('certificate-request-modal');
+    if (!modal) {
+        console.error('[openCertReq] Modal no encontrado');
+        alert('Error: Recarga la página e inténtalo de nuevo.');
+        return;
+    }
+
+    // Abrir modal y resetear pasos INMEDIATAMENTE (sin esperar Firestore)
+    modal.style.display = 'flex';
+    ['cert-req-step-1','cert-req-step-2','cert-req-step-3','cert-req-step-4','cert-req-step-5'].forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = i === 0 ? 'block' : 'none';
+    });
+
+    const btnContainer = document.getElementById('cert-course-buttons');
+    if (!btnContainer) return;
+
+    // Si ya tenemos cursos en caché, mostrarlos de inmediato
+    if (AppState.certificateCourses && AppState.certificateCourses.length > 0) {
+        renderCertCourseButtons(btnContainer);
+        return;
+    }
+
+    // Usar cursos por defecto INMEDIATAMENTE (sin spinner, sin esperar Firebase)
+    AppState.certificateCourses = [...DEFAULT_CERT_COURSES];
+    renderCertCourseButtons(btnContainer);
+
+    // Intentar enriquecer con cursos de Firestore en segundo plano (silencioso)
+    try {
+        const snapshot = await getDocs(collection(db, 'certificate_courses'));
+        if (!snapshot.empty) {
+            const remoteCourses = [];
+            snapshot.forEach(d => remoteCourses.push({ id: d.id, ...d.data() }));
+            const active = remoteCourses.filter(c => c.isActive !== false);
+            if (active.length > 0) {
+                AppState.certificateCourses = active;
+                renderCertCourseButtons(btnContainer); // actualizar con datos de Firestore
+            }
+        }
+    } catch (err) {
+        // Silencioso: ya mostramos los cursos por defecto
+        console.warn('[openCertReq] Firestore no disponible, usando cursos locales:', err.code || err.message);
+    }
+};
+
+function renderCertCourseButtons(btnContainer) {
+    btnContainer.innerHTML = '';
+    (AppState.certificateCourses || []).forEach(course => {
+        const btn = document.createElement('button');
+        btn.style.cssText = 'padding:12px;background:#fff;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;font-weight:600;color:#1E293B;cursor:pointer;text-align:center;transition:all 0.2s;width:100%;';
+        btn.innerHTML = `<i class="fa-solid ${course.icon || 'fa-certificate'}" style="margin-right:5px;color:#2563EB;"></i> ${course.name}`;
+        btn.addEventListener('click', () => {
+            AppState.selectedCertCourse = course;
+            const quizContainer = document.getElementById('quiz-form');
+            if (!quizContainer) return;
+            quizContainer.innerHTML = '';
+            if (course.questions && course.questions.length > 0) {
+                course.questions.forEach((q, index) => {
+                    let optHtml = '';
+                    q.options.forEach(opt => {
+                        optHtml += `<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:#475569;margin-bottom:8px;cursor:pointer;"><input type="radio" name="q${index}" value="${opt.id}"> ${opt.text}</label>`;
+                    });
+                    quizContainer.innerHTML += `<div class="quiz-question" data-correct="${q.correctOption}"><p style="font-weight:700;color:#1E293B;font-size:0.95rem;margin:0 0 12px 0;">${index + 1}. ${q.text}</p>${optHtml}</div>`;
+                });
+            } else {
+                quizContainer.innerHTML = '<p style="color:#94A3B8;text-align:center;">No hay preguntas configuradas.</p>';
+            }
+            document.getElementById('cert-req-step-1').style.display = 'none';
+            document.getElementById('cert-req-step-2').style.display = 'block';
+        });
+        btn.addEventListener('mouseenter', () => btn.style.background = '#F1F5F9');
+        btn.addEventListener('mouseleave', () => btn.style.background = '#fff');
+        btnContainer.appendChild(btn);
+    });
+}
 
 
 const App = {
@@ -61,7 +231,17 @@ const App = {
             Router.addRoute('/profile', this.loadProfile.bind(this));
             Router.addRoute('/checkout', this.loadCheckout.bind(this));
             Router.addRoute('/seed', this.loadSeedPage.bind(this));
-            Router.addRoute('/admin', AdminController.loadAdminDashboard.bind(AdminController));
+            Router.addRoute('/certificados', this.loadCertificados.bind(this));
+            // Admin route: espera a que auth cargue antes de verificar permisos
+            Router.addRoute('/admin', async () => {
+                // Esperar hasta 3 segundos por el estado de auth
+                let waited = 0;
+                while (AppState.user === undefined && waited < 3000) {
+                    await new Promise(r => setTimeout(r, 100));
+                    waited += 100;
+                }
+                AdminController.loadAdminDashboard();
+            });
             Router.init();
 
             // Escuchar cambios de sesión
@@ -118,7 +298,6 @@ const App = {
             console.log(`📡 [Real-time] ${professionals.length} especialistas online recibidos.`);
             AppState.professionals = professionals;
             this.renderMapMarkers();
-            this.renderProfessionalList(professionals); // También actualizar la lista lateral/inferior
         });
 
         this.bindHomeEvents();
@@ -126,8 +305,10 @@ const App = {
         // Try getting real user location
         this.locateUser();
 
-        // Obtener todos los especialistas por defecto al cargar el inicio
-        this.fetchAndRenderProfessionals('all');
+        // Obtener todos los especialistas por defecto al cargar el inicio solo si está logueado
+        if (AppState.user) {
+            this.fetchAndRenderProfessionals('all');
+        }
 
         // Logout listener if on Home
         const btnLogout = document.getElementById('logout-btn-home');
@@ -431,12 +612,25 @@ const App = {
             }
         };
 
+        const checkAuth = () => {
+            if (!AppState.user) {
+                alert("Para visualizar a nuestros especialistas y el mapa de cobertura, por favor inicie sesión o regístrese primero.");
+                return false;
+            }
+            return true;
+        };
+
         // Hero search bar click
         const heroSearchBar = document.getElementById('hero-search-trigger');
-        if (heroSearchBar) heroSearchBar.addEventListener('click', deactivateHero);
+        if (heroSearchBar) {
+            heroSearchBar.addEventListener('click', () => {
+                if (checkAuth()) deactivateHero();
+            });
+        }
 
         // Botones de categoría del hero (data-filter o data-cat por compatibilidad)
         catBtns.forEach(btn => btn.addEventListener('click', (e) => {
+            if (!checkAuth()) return;
             const filter = e.currentTarget.dataset.filter || e.currentTarget.dataset.cat;
             if (filter) {
                 this.fetchAndRenderProfessionals(filter);
@@ -454,6 +648,7 @@ const App = {
         const btns = document.querySelectorAll('.filter-btn');
         btns.forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (!checkAuth()) return;
                 btns.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 this.fetchAndRenderProfessionals(e.target.dataset.filter);
@@ -463,9 +658,167 @@ const App = {
 
         // Botón de ubicación
         document.getElementById('btn-my-location')?.addEventListener('click', () => {
+            if (!checkAuth()) return;
             this.locateUser();
             deactivateHero();
         });
+
+        // --- BINDINGS DE CERTIFICADOS (hero) ---
+        // Enlazados aquí por addEventListener para máxima compatibilidad
+        document.getElementById('btn-hero-get-cert')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.openCertReq(e);
+        });
+        document.getElementById('btn-hero-verify-cert')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.openCertVerify(e);
+        });
+
+        document.getElementById('btn-search-cert')?.addEventListener('click', () => {
+            const input = document.getElementById('cert-search-input').value;
+            if (!input.trim()) {
+                alert('Ingresa un DNI o código válido');
+                return;
+            }
+            
+            const btn = document.getElementById('btn-search-cert');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buscando...';
+            
+            import('./services/database.mjs?v=MAY5').then(async ({ searchCertificate }) => {
+                const result = await searchCertificate(input.trim());
+                btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Verificar';
+                
+                if (result.success) {
+                    const cert = result.certificate;
+                    document.getElementById('cert-search-view').style.display = 'none';
+                    
+                    document.getElementById('cert-result-holder-name').textContent = cert.userName;
+                    document.getElementById('cert-result-course-name').textContent = cert.courseName;
+                    const issueDate = cert.issueDate ? new Date(cert.issueDate.seconds * 1000).toLocaleDateString('es-PE') : 'N/A';
+                    document.getElementById('cert-result-issue-date').textContent = issueDate;
+                    
+                    const qrImg = document.getElementById('cert-result-qr');
+                    if (qrImg && cert.uniqueCode) {
+                        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cert.uniqueCode)}`;
+                        qrImg.style.display = 'block';
+                    }
+                    
+                    document.getElementById('cert-result-view').style.display = 'block';
+                } else {
+                    alert(result.error);
+                }
+            });
+        });
+
+        document.getElementById('btn-cert-back')?.addEventListener('click', () => {
+            document.getElementById('cert-search-input').value = '';
+            document.getElementById('cert-search-view').style.display = 'block';
+            document.getElementById('cert-result-view').style.display = 'none';
+        });
+
+        document.querySelectorAll('.btn-pay-membership-ui').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const modal = document.getElementById('membership-pay-modal');
+                if (modal) modal.style.display = 'flex';
+            });
+        });
+
+        const btnSubmitMembership = document.getElementById('btn-submit-membership');
+        if (btnSubmitMembership) {
+            btnSubmitMembership.addEventListener('click', async () => {
+                const fileInput = document.getElementById('membership-voucher-file');
+                const file = fileInput.files[0];
+                if (!file) {
+                    alert('Por favor selecciona una imagen del comprobante.');
+                    return;
+                }
+                btnSubmitMembership.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Subiendo...';
+                btnSubmitMembership.disabled = true;
+
+                import('./services/database.mjs?v=MAY5').then(async ({ uploadMembershipVoucher }) => {
+                    const result = await uploadMembershipVoucher(AppState.user.uid, file);
+                    if (result.success) {
+                        alert('¡Comprobante enviado! El administrador lo validará pronto.');
+                        window.location.reload();
+                    } else {
+                        alert('Error al subir comprobante: ' + result.error);
+                        btnSubmitMembership.innerHTML = 'Enviar Comprobante';
+                        btnSubmitMembership.disabled = false;
+                    }
+                });
+            });
+        }
+
+        const btnSubmitQuiz = document.getElementById('btn-submit-quiz');
+        if (btnSubmitQuiz) {
+            btnSubmitQuiz.addEventListener('click', () => {
+                const quizQuestions = document.querySelectorAll('.quiz-question');
+                let allCorrect = true;
+                
+                if (quizQuestions.length === 0) return;
+
+                quizQuestions.forEach((qDiv, index) => {
+                    const correctVal = qDiv.dataset.correct;
+                    const checkedVal = document.querySelector(`input[name="q${index}"]:checked`)?.value;
+                    if (checkedVal !== correctVal) {
+                        allCorrect = false;
+                    }
+                });
+
+                const errorDiv = document.getElementById('quiz-error');
+                
+                if (allCorrect) {
+                    errorDiv.style.display = 'none';
+                    document.getElementById('cert-req-step-2').style.display = 'none';
+                    document.getElementById('cert-req-step-3').style.display = 'block';
+                } else {
+                    errorDiv.style.display = 'block';
+                }
+            });
+        }
+
+        const btnGenerateCertView = document.getElementById('btn-generate-cert-view');
+        if (btnGenerateCertView) {
+            btnGenerateCertView.addEventListener('click', () => {
+                document.getElementById('cert-req-step-3').style.display = 'none';
+                document.getElementById('cert-req-step-4').style.display = 'block';
+            });
+        }
+
+        const btnSubmitCertRequest = document.getElementById('btn-submit-cert-request');
+        if (btnSubmitCertRequest) {
+            btnSubmitCertRequest.addEventListener('click', async () => {
+                if (!AppState.user) {
+                    alert('Debes iniciar sesión o registrarte para solicitar un certificado.');
+                    document.getElementById('certificate-request-modal').style.display = 'none';
+                    window.location.hash = '/login';
+                    return;
+                }
+
+                const fileInput = document.getElementById('cert-voucher-file');
+                const file = fileInput.files[0];
+                if (!file) {
+                    alert('Por favor selecciona una imagen del comprobante de pago.');
+                    return;
+                }
+
+                btnSubmitCertRequest.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+                btnSubmitCertRequest.disabled = true;
+
+                import('./services/database.mjs?v=MAY5').then(async ({ uploadCertificateVoucher }) => {
+                    const courseName = AppState.selectedCertCourse ? AppState.selectedCertCourse.name : 'Curso General';
+                    const result = await uploadCertificateVoucher(AppState.user.uid, file, AppState.user.name, AppState.user.dni || 'No provisto', courseName);
+                    if (result.success) {
+                        document.getElementById('cert-req-step-4').style.display = 'none';
+                        document.getElementById('cert-req-step-5').style.display = 'block';
+                    } else {
+                        alert('Error al enviar solicitud: ' + result.error);
+                        btnSubmitCertRequest.innerHTML = 'Enviar Solicitud';
+                        btnSubmitCertRequest.disabled = false;
+                    }
+                });
+            });
+        }
     },
 
     locateUser() {
@@ -1661,7 +2014,14 @@ const App = {
             return;
         }
 
-        listContainer.innerHTML = services.map(req => `
+        listContainer.innerHTML = services.map(req => {
+            const earnings = req.profEarnings ? req.profEarnings.toFixed(2) : (Number(req.totalAmount || 0) * 0.85).toFixed(2);
+            const datesHtml = (req.serviceDates && req.serviceDates.length > 0)
+                ? `<div style="margin:6px 0 0;font-size:0.7rem;color:#2563EB;background:rgba(37,99,235,0.07);padding:4px 8px;border-radius:6px;">
+                    <i class="fa-solid fa-calendar-days"></i> ${req.serviceDates.slice(0,3).join(' · ')}${req.serviceDates.length > 3 ? ` +${req.serviceDates.length - 3} más` : ''}
+                  </div>`
+                : '';
+            return `
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border-radius: 12px; padding: 12px; margin-bottom: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                     <div>
@@ -1669,22 +2029,23 @@ const App = {
                         <p style="color: #64748B; margin: 2px 0 0 0; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">
                             <i class="fa-solid fa-location-dot"></i> ${req.address || 'Puno'}
                         </p>
+                        ${datesHtml}
                     </div>
                     <div style="text-align: right;">
-                        <span style="display: block; color: #10B981; font-weight: 800; font-size: 0.8rem;">S/ ${req.profEarnings || (req.totalAmount * 0.75)}</span>
+                        <span style="display: block; color: #10B981; font-weight: 800; font-size: 0.8rem;">S/ ${earnings}</span>
                     </div>
                 </div>
-                
                 <div style="display: flex; gap: 8px;">
-                    <a href="https://wa.me/51${req.clientPhone}" target="_blank" style="flex:1; background:#FFFFFF; color:#1E293B; border: 1px solid #E2E8F0; text-decoration:none; padding:8px; border-radius:8px; font-size:0.75rem; text-align:center; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                        <i class="fa-brands fa-whatsapp" style="color:#25D366; font-size:1.1rem;"></i> Chat
-                    </a>
+                    <button class="btn-open-chat-mission" data-reqid="${req.id}" data-othername="${req.clientName || 'Cliente'}" data-othertype="client"
+                        style="flex:1; background:#2563EB; color:#fff; border:none; padding:8px; border-radius:8px; font-size:0.75rem; text-align:center; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+                        <i class="fa-solid fa-comments"></i> Chat
+                    </button>
                     <button class="btn-complete-mission" data-id="${req.id}" style="flex:1; background:#FF7A00; color:#fff; border:none; padding:8px; border-radius:8px; font-size:0.75rem; font-weight:700; cursor:pointer; box-shadow: 0 4px 10px rgba(255,122,0,0.2);">
                         Finalizar
                     </button>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
 
         // Bind Complete Buttons
         listContainer.querySelectorAll('.btn-complete-mission').forEach(btn => {
@@ -1701,6 +2062,89 @@ const App = {
                 }
             };
         });
+
+        // Bind Chat Buttons in mission cards
+        listContainer.querySelectorAll('.btn-open-chat-mission').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const reqId = btn.dataset.reqid;
+                const otherName = btn.dataset.othername;
+                this.openChat(reqId, otherName);
+            });
+        });
+    },
+
+    openChat(reqId, otherName) {
+        const modal = document.getElementById('chat-modal');
+        if (!modal) return;
+
+        // Set header
+        const headerName = document.getElementById('chat-header-name');
+        const headerSub = document.getElementById('chat-header-sub');
+        if (headerName) headerName.textContent = `Chat con ${otherName}`;
+        if (headerSub) headerSub.textContent = `Solicitud #${reqId.slice(-6).toUpperCase()}`;
+
+        // Clear previous messages
+        const messagesDiv = document.getElementById('chat-messages');
+        if (messagesDiv) messagesDiv.innerHTML = '<p style="text-align:center;color:#94A3B8;font-size:0.8rem;padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando mensajes...</p>';
+
+        modal.classList.add('active');
+
+        // Unsubscribe previous listener
+        if (this._chatUnsubscribe) this._chatUnsubscribe();
+
+        // Listen for messages in real-time
+        this._chatUnsubscribe = listenForChatMessages(reqId, (messages) => {
+            if (!messagesDiv) return;
+            const myId = AppState.user?.uid;
+            if (messages.length === 0) {
+                messagesDiv.innerHTML = '<p style="text-align:center;color:#94A3B8;font-size:0.8rem;padding:20px;">Aún no hay mensajes. ¡Saluda primero!</p>';
+                return;
+            }
+            messagesDiv.innerHTML = messages.map(msg => {
+                const isMe = msg.senderId === myId;
+                const time = msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString('es-PE', {hour:'2-digit',minute:'2-digit'}) : '';
+                return `
+                <div style="display:flex;flex-direction:column;align-items:${isMe ? 'flex-end' : 'flex-start'};">
+                    <div style="max-width:78%;background:${isMe ? '#2563EB' : '#fff'};color:${isMe ? '#fff' : '#1E293B'};padding:10px 14px;border-radius:${isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px'};font-size:0.88rem;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                        ${!isMe ? `<span style="display:block;font-size:0.65rem;font-weight:800;color:#2563EB;margin-bottom:4px;">${msg.senderName || otherName}</span>` : ''}
+                        ${msg.text}
+                    </div>
+                    <span style="font-size:0.6rem;color:#94A3B8;margin-top:3px;">${time}</span>
+                </div>`;
+            }).join('');
+            // Auto-scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        // Close button
+        const closeBtn = document.getElementById('close-chat-modal');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                modal.classList.remove('active');
+                if (this._chatUnsubscribe) { this._chatUnsubscribe(); this._chatUnsubscribe = null; }
+            };
+        }
+
+        // Send button + Enter key
+        const sendBtn = document.getElementById('btn-send-chat');
+        const input = document.getElementById('chat-input');
+        const doSend = async () => {
+            const text = input?.value?.trim();
+            if (!text) return;
+            input.value = '';
+            await sendChatMessage(reqId, AppState.user.uid, AppState.user.name || 'Usuario', text);
+        };
+        if (sendBtn) sendBtn.onclick = doSend;
+        if (input) input.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
+
+        // Wire chat button from service-accepted-modal
+        const chatFromAccepted = document.getElementById('btn-chat-from-accepted');
+        if (chatFromAccepted) {
+            chatFromAccepted.onclick = () => {
+                document.getElementById('service-accepted-modal')?.classList.remove('active');
+                this.openChat(reqId, otherName);
+            };
+        }
     },
 
     async loadCheckout() {
@@ -1947,8 +2391,8 @@ const App = {
                         address: document.getElementById('project-address').value || '',
                         days: selectedDates.length,
                         totalAmount: total,
-                        profEarnings: total * 0.85, // 85% para el trabajador
-                        adminCommission: total * 0.15, // 15% para la plataforma
+                        profEarnings: total, // 100% para el trabajador
+                        adminCommission: 0, // Sin comisión por servicio
                         status: 'pending'
                     };
 
@@ -2034,6 +2478,12 @@ const App = {
         if (AppState.map) { AppState.map.remove(); AppState.map = null; }
         document.getElementById('app').innerHTML = renderSeed();
         loadSeed();
+    },
+
+    async loadCertificados() {
+        if (AppState.map) { AppState.map.remove(); AppState.map = null; }
+        document.getElementById('app').innerHTML = renderCertificados();
+        await bindCertificadosEvents();
     }
 };
 
