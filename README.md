@@ -6,10 +6,6 @@
 
 **J&A SafeWork** es una Single Page Application (SPA) modular diseñada para la gestión, solicitud y administración de servicios de ingeniería, seguridad industrial y mantenimiento técnico. La plataforma integra un flujo completo entre Clientes, Especialistas Técnicos y Administradores.
 
-<p align="center">
-  <img src="Coding%20The%20Matrix%20GIF.gif" alt="Demo GIF" width="600" />
-</p>
-
 ---
 
 ## 🛠️ Arquitectura y Tecnologías
