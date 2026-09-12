@@ -23,6 +23,32 @@
 
 <body>
 
+    <!-- ============================
+         🚧 MANTENIMIENTO TEMPORAL START
+         Para quitar: borrar todo este bloque
+    ============================= -->
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; }
+        #app { display: none !important; }
+    </style>
+    <div id="mantenimiento-overlay" style="
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        z-index: 99999;
+        overflow: hidden;
+    ">
+        <img src="img/mantenimiento.gif" alt="" style="
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        ">
+    </div>
+    <!-- ============================
+         🚧 MANTENIMIENTO TEMPORAL END
+    ============================= -->
+
     <!-- Mount Point for the SPA Router -->
     <div id="app"></div>
 
