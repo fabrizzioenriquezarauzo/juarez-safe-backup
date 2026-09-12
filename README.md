@@ -1,97 +1,96 @@
-# J&A SafeWork - Plataforma de Gestión de Servicios Técnicos y Mantenimiento
+# J&A SafeWork - Technical Services & Industrial Safety Management Platform
 
 [![Firebase](https://img.shields.io/badge/Backend-Firebase-ffca28?style=flat-square&logo=firebase)](https://firebase.google.com/)
-[![JavaScript](https://img.shields.io/badge/Frontend-ES6%2B%20Vanilla%20JS-f7df1e?style=flat-square&logo=javascript)](https://developer.mozilla.org/es/docs/Web/JavaScript)
+[![JavaScript](https://img.shields.io/badge/Frontend-ES6%2B%20Vanilla%20JS-f7df1e?style=flat-square&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 [![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](#)
 
-**J&A SafeWork** es una Single Page Application (SPA) modular diseñada para la gestión, solicitud y administración de servicios de ingeniería, seguridad industrial y mantenimiento técnico. La plataforma integra un flujo completo entre Clientes, Especialistas Técnicos y Administradores.
+**J&A SafeWork** is a modular Single Page Application (SPA) designed for requesting, scheduling, and managing industrial engineering, technical maintenance, and safety services. The platform connects Clients, Field Specialists, and Administrators in a unified real-time workflow.
 
 ---
 
-## 🛠️ Arquitectura y Tecnologías
+## 🛠️ Architecture & Tech Stack
 
-- **Frontend**: HTML5, CSS3 (Diseño responsivo con variables de diseño personalizadas), JavaScript ES6+ (Arquitectura orientada a módulos SPA).
-- **Backend & Database**: Firebase Authentication, Cloud Firestore (Base de datos NoSQL en tiempo real), Firebase Storage.
-- **Hosting & Infraestructura**: Firebase Hosting con despliegue automatizado.
-- **Patrón de Arquitectura**: MVC / SPA con Enrutamiento Dinámico de vistas (`router.js`), Manejo de Estado reactivo (`state.js`) y Controladores de Administración (`AdminController.js`).
-
----
-
-## 🚀 Características Principales
-
-### 👨‍💻 Cliente / Usuario
-- **Catálogo Dinámico de Servicios**: Solicitud de servicios técnicos y de mantenimiento.
-- **Checkout y Proceso de Pago**: Subida de comprobantes de pago (BCP, Interbank, Yape, Plin) con envío directo a verificación.
-- **Seguimiento en Tiempo Real**: Estado del servicio solicitado (`esperando_profesional`, `esperando_pago`, `pago_verificando`, `aprobado`, `finalizado`).
-
-### 👷 Especialistas Técnicos
-- **Mapeo de Solicitudes**: Aceptación o rechazo de servicios asignados.
-- **Carga de Certificados y Documentos**: Validación de perfil técnico mediante Firebase Storage.
-- **Historial de Trabajos y Pagos**: Visualización de servicios realizados e ingresos netos.
-
-### 🛡️ Panel de Administración (Admin Dashboard)
-- **Verificación de Comprobantes de Pago**: Aprobación y rechazo dinámico de vouchers cargados por clientes.
-- **Control Financiero y Comisiones**:
-  - Registro automatizado del **25% de comisión para la plataforma**.
-  - Cálculo del **75% neto a abonar al especialista**.
-- **Gestión de Usuarios y Roles**: Administración de roles y permisos mediante Firestore Security Rules (RBAC).
+- **Frontend**: HTML5, CSS3 (Responsive design with CSS custom properties), JavaScript ES6+ (Module-based SPA architecture).
+- **Backend & Database**: Firebase Authentication, Cloud Firestore (Real-time NoSQL Database), Firebase Storage.
+- **Hosting & Infrastructure**: Firebase Hosting with automated CLI deployment pipelines.
+- **Architectural Patterns**: SPA / MVC architecture with client-side dynamic routing (`router.js`), reactive state management (`state.js`), and centralized admin controllers (`AdminController.js`).
 
 ---
 
-## 📂 Estructura del Proyecto
+## 🚀 Core Features
+
+### 👨‍💻 Client Portal
+- **Dynamic Service Catalog**: Interactive requesting of technical and maintenance services.
+- **Checkout & Payment Verification**: Proof-of-payment upload (wire transfers, digital wallets) with instant routing for validation.
+- **Real-Time Request Tracking**: Multi-stage tracking pipeline (`waiting_specialist`, `pending_payment`, `verifying_payment`, `approved`, `completed`).
+
+### 👷 Technical Specialists
+- **Mission Dispatch**: Acceptance or rejection of assigned engineering requests.
+- **Credentials & Certificate Management**: Verification of technical qualifications via Firebase Storage.
+- **Earnings & Work History**: Financial summaries of completed jobs and net income payouts.
+
+### 🛡️ Admin Dashboard & Control Panel
+- **Payment Voucher Audit**: Real-time approval or rejection of customer payment receipts.
+- **Financial Controls & Platform Fees**:
+  - Automated **25% platform service fee** calculation.
+  - Tracking of **75% net payout balance** owed to technical specialists.
+- **Role-Based Access Control (RBAC)**: Fine-grained user role administration enforced via Firestore Security Rules.
+
+---
+
+## 📂 Project Structure
 
 ```bash
 Juarez Empresa/
-├── css/                     # Hojas de estilo estructuradas y variables de tema
+├── css/                     # Structured design tokens and modular stylesheets
 ├── js/
-│   ├── services/            # Servicios de integración con Firebase (Auth, Database, Storage)
-│   ├── views/               # Vistas modulares de la SPA (AdminDashboard, Checkout, Profile, etc.)
-│   ├── AdminController.js   # Controlador de lógica administrativa y financiera
-│   ├── app.js               # Punto de entrada principal y bootstrap de la aplicación
-│   ├── router.js            # Enrutador cliente SPA
-│   └── state.js             # Gestor de estado global de la aplicación
-├── FASE_6_PLAN_PAGOS.md     # Documento de especificación técnica y modelo de negocio
-├── firestore.rules          # Reglas de seguridad NoSQL y control de acceso RBAC
-├── storage.rules            # Reglas de seguridad para carga de archivos y comprobantes
-├── firebase.json            # Configuración de despliegue en Firebase Hosting
-└── index.html               # Contenedor principal SPA
+│   ├── services/            # Firebase SDK service integrations (Auth, Firestore, Storage)
+│   ├── views/               # SPA modular views (AdminDashboard, Checkout, Profile, etc.)
+│   ├── AdminController.js   # Financial & administrative business logic controller
+│   ├── app.js               # Main application entry point & bootstrap script
+│   ├── router.js            # Client-side SPA routing engine
+│   └── state.js             # Global reactive state manager
+├── FASE_6_PLAN_PAGOS.md     # Technical specification & financial business model
+├── firestore.rules          # NoSQL Security Rules & RBAC access control matrices
+├── storage.rules            # Security rules for file uploads & payment receipts
+├── firebase.json            # Firebase Hosting & deployment configuration
+└── index.html               # SPA root mount point
 ```
 
 ---
 
-## 📄 Documentación Técnica
+## 📄 Technical Documentation
 
-El proyecto cuenta con especificaciones detalladas para cada módulo:
-1. **[Plan de Pagos y Panel Admin](FASE_6_PLAN_PAGOS.md)**: Detalle del modelo financiero, comisión del 25%, flujo de caja y ciclo de vida de los estados del servicio.
-2. **Reglas de Firestore (`firestore.rules`)**: Matriz de permisos detallada para garantizar que solo administradores autenticados puedan modificar estados financieros y los usuarios solo accedan a sus propias solicitudes.
+1. **[Payment Model & Admin Specification](FASE_6_PLAN_PAGOS.md)**: Detailed breakdown of the financial engine, 25% commission model, transaction flow, and service lifecycle states.
+2. **Firestore Security Rules (`firestore.rules`)**: Access control matrix ensuring only authenticated admins modify financial balances, while clients and specialists are isolated to their authorized data scope.
 
 ---
 
-## 🔧 Instalación y Configuración Local
+## 🔧 Installation & Local Setup
 
-1. **Clonar el repositorio:**
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/fabrizzioenriquezarauzo/juarez-safe-backup.git
    cd juarez-safe-backup
    ```
 
-2. **Instalar dependencias:**
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-3. **Iniciar servidor de desarrollo local:**
+3. **Start local development server:**
    ```bash
    python3 dev_server.py
-   # O abrir index.html a través de un servidor HTTP local (Live Server / http-server)
+   # Or serve index.html using any local HTTP server (Live Server / http-server)
    ```
 
-4. **Despliegue a producción (Firebase Hosting):**
+4. **Deploy to production (Firebase Hosting):**
    ```bash
    npx firebase deploy
    ```
 
 ---
 
-## 🔒 Licencia y Propiedad
-Desarrollado para J&A SafeWork. Todos los derechos reservados.
+## 🔒 License
+Developed for J&A SafeWork. All rights reserved.
