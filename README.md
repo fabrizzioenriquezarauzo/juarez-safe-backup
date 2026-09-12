@@ -73,5 +73,7 @@ Juarez Empresa/
    npx firebase deploy
    ```
 
-## License
-Developed for J&A SafeWork. All rights reserved.
+## Author & License
+
+Developed and maintained by Gerson Fabrizio Enriquez Arauzo for J&A SafeWork. All rights reserved.
+
